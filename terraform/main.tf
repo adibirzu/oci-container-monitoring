@@ -60,16 +60,36 @@ module "container_instance" {
   nsg_ocids               = local.nsg_list
   ocir_username           = var.ocir_username
   ocir_auth_token         = var.ocir_auth_token
+  ocir_endpoint           = "${var.region}.ocir.io"
 
-  # Management Agent sidecar configuration
+  # Management Agent configuration (Legacy)
   enable_management_agent    = var.enable_management_agent
-  mgmt_agent_install_key     = var.enable_management_agent ? module.management_agent[0].install_key : ""
+  mgmt_agent_install_key     = (var.enable_management_agent || var.enable_management_agent_sidecar) ? module.management_agent[0].install_key : ""
   region                     = var.region
   prometheus_scrape_interval = var.prometheus_scrape_interval
   prometheus_scrape_timeout  = var.prometheus_scrape_timeout
   prometheus_metrics_port    = var.prometheus_metrics_port
   prometheus_metrics_path    = var.prometheus_metrics_path
   metrics_namespace          = var.metrics_namespace
+
+  # Sidecar Architecture Configuration (New)
+  enable_shared_volumes             = var.enable_shared_volumes
+  enable_management_agent_sidecar   = var.enable_management_agent_sidecar
+  enable_prometheus_sidecar         = var.enable_prometheus_sidecar
+  mgmt_agent_sidecar_image          = var.mgmt_agent_sidecar_image
+  prometheus_sidecar_image          = var.prometheus_sidecar_image
+  mgmt_agent_sidecar_memory_gb      = var.mgmt_agent_sidecar_memory_gb
+  mgmt_agent_sidecar_ocpus          = var.mgmt_agent_sidecar_ocpus
+  prometheus_sidecar_memory_gb      = var.prometheus_sidecar_memory_gb
+  prometheus_sidecar_ocpus          = var.prometheus_sidecar_ocpus
+
+  # Prometheus Exporters Configuration
+  enable_prometheus_exporters = var.enable_prometheus_exporters
+  enable_nginx_exporter       = var.enable_nginx_exporter
+  enable_redis_exporter       = var.enable_redis_exporter
+  enable_postgres_exporter    = var.enable_postgres_exporter
+  enable_mysql_exporter       = var.enable_mysql_exporter
+  enable_blackbox_exporter    = var.enable_blackbox_exporter
 
   freeform_tags = local.common_tags
   defined_tags  = var.defined_tags
@@ -105,7 +125,7 @@ module "logging" {
 # The agent configuration is done within the container instance
 #######################################
 module "management_agent" {
-  count = var.enable_management_agent ? 1 : 0
+  count = (var.enable_management_agent || var.enable_management_agent_sidecar) ? 1 : 0
 
   source = "./modules/management-agent"
 

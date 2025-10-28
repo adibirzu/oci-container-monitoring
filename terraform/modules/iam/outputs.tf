@@ -5,15 +5,15 @@ output "container_instance_dynamic_group_id" {
 
 output "management_agent_dynamic_group_id" {
   description = "OCID of the management agent dynamic group"
-  value       = var.create_dynamic_groups && var.enable_management_agent ? oci_identity_dynamic_group.management_agent_dg[0].id : ""
+  value       = try(oci_identity_dynamic_group.management_agent_dg[0].id, "")
 }
 
 output "container_logging_policy_id" {
   description = "OCID of the container logging policy"
-  value       = var.create_policies ? oci_identity_policy.container_logging_policy[0].id : ""
+  value       = try(oci_identity_policy.container_logging_policy[0].id, "")
 }
 
 output "mgmt_agent_metrics_policy_id" {
   description = "OCID of the management agent metrics policy"
-  value       = var.create_policies && var.enable_management_agent ? oci_identity_policy.mgmt_agent_metrics_policy[0].id : ""
+  value       = try(oci_identity_policy.mgmt_agent_metrics_policy[0].id, "")
 }

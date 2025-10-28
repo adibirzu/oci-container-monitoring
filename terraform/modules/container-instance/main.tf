@@ -126,7 +126,26 @@ resource "oci_container_instances_container_instance" "main" {
       failure_threshold   = 3
     }
 
-    # Volume mounts (if needed)
+    # Shared volume mounts for sidecar pattern
+    dynamic "volume_mounts" {
+      for_each = var.enable_shared_volumes ? [1] : []
+      content {
+        mount_path  = "/metrics"
+        volume_name = "metrics-volume"
+        is_read_only = false
+      }
+    }
+
+    dynamic "volume_mounts" {
+      for_each = var.enable_shared_volumes ? [1] : []
+      content {
+        mount_path  = "/logs"
+        volume_name = "logs-volume"
+        is_read_only = false
+      }
+    }
+
+    # Additional volume mounts (user-defined)
     dynamic "volume_mounts" {
       for_each = var.volume_mounts
       content {
@@ -365,6 +384,105 @@ resource "oci_container_instances_container_instance" "main" {
     }
   }
 
+  #######################################
+  # Sidecar Containers - New Architecture
+  #######################################
+
+  # Management Agent Sidecar Container (New Architecture)
+  # Uses custom container image with auto-installation script
+  # Integrates with OCI Monitoring via Prometheus plugin
+  dynamic "containers" {
+    for_each = var.enable_management_agent_sidecar && var.mgmt_agent_sidecar_image != "" ? [1] : []
+    content {
+      display_name = "${var.container_instance_name}-mgmt-agent-sidecar"
+      image_url    = var.mgmt_agent_sidecar_image
+
+      # Environment variables for Management Agent configuration
+      environment_variables = {
+        MGMT_AGENT_INSTALL_KEY     = var.mgmt_agent_install_key
+        OCI_REGION                  = var.region
+        PROMETHEUS_SCRAPE_INTERVAL  = "${var.prometheus_scrape_interval}s"
+        PROMETHEUS_SCRAPE_TIMEOUT   = "${var.prometheus_scrape_timeout}s"
+        METRICS_NAMESPACE           = var.metrics_namespace
+      }
+
+      # Volume mounts for shared data
+      dynamic "volume_mounts" {
+        for_each = var.enable_shared_volumes ? [1] : []
+        content {
+          mount_path  = "/metrics"
+          volume_name = "metrics-volume"
+          is_read_only = false
+        }
+      }
+
+      dynamic "volume_mounts" {
+        for_each = var.enable_shared_volumes ? [1] : []
+        content {
+          mount_path  = "/logs"
+          volume_name = "logs-volume"
+          is_read_only = false
+        }
+      }
+
+      # Resource allocation for Management Agent sidecar
+      resource_config {
+        memory_limit_in_gbs = var.mgmt_agent_sidecar_memory_gb
+        vcpus_limit         = var.mgmt_agent_sidecar_ocpus
+      }
+
+      # Note: No health check for Management Agent sidecar
+      # It's a monitoring component and doesn't affect application availability
+      # The agent has internal health monitoring and logging
+    }
+  }
+
+  # Prometheus Sidecar Container (New Architecture)
+  # Aggregates metrics from all exporters on localhost
+  # Provides unified endpoint for Management Agent to scrape
+  dynamic "containers" {
+    for_each = var.enable_prometheus_sidecar && var.prometheus_sidecar_image != "" ? [1] : []
+    content {
+      display_name = "${var.container_instance_name}-prometheus-sidecar"
+      image_url    = var.prometheus_sidecar_image
+
+      # Volume mounts for shared data
+      dynamic "volume_mounts" {
+        for_each = var.enable_shared_volumes ? [1] : []
+        content {
+          mount_path  = "/metrics"
+          volume_name = "metrics-volume"
+          is_read_only = false
+        }
+      }
+
+      dynamic "volume_mounts" {
+        for_each = var.enable_shared_volumes ? [1] : []
+        content {
+          mount_path  = "/logs"
+          volume_name = "logs-volume"
+          is_read_only = false
+        }
+      }
+
+      # Resource allocation for Prometheus sidecar
+      resource_config {
+        memory_limit_in_gbs = var.prometheus_sidecar_memory_gb
+        vcpus_limit         = var.prometheus_sidecar_ocpus
+      }
+
+      # Health check for Prometheus
+      health_checks {
+        health_check_type = "HTTP"
+        port              = 9090
+        path              = "/-/healthy"
+        interval_in_seconds = 30
+        timeout_in_seconds  = 10
+        failure_threshold   = 3
+      }
+    }
+  }
+
   # Management Agent Sidecar Container (Legacy - for backward compatibility)
   # NOTE: This does NOT work in Container Instances (containers lack systemd)
   # Use Monitoring VM with Management Agent instead
@@ -440,12 +558,33 @@ resource "oci_container_instances_container_instance" "main" {
     content {
       secret_type  = "BASIC"
       registry_endpoint = var.ocir_endpoint
-      username     = var.ocir_username
-      password     = var.ocir_auth_token
+      username     = base64encode(var.ocir_username)
+      password     = base64encode(var.ocir_auth_token)
     }
   }
 
-  # Volumes (if needed)
+  #######################################
+  # Shared Volumes for Sidecar Pattern
+  #######################################
+  # Metrics volume - shared between application, Prometheus, and Management Agent
+  dynamic "volumes" {
+    for_each = var.enable_shared_volumes ? [1] : []
+    content {
+      name        = "metrics-volume"
+      volume_type = "EMPTYDIR"
+    }
+  }
+
+  # Logs volume - shared between all containers for centralized logging
+  dynamic "volumes" {
+    for_each = var.enable_shared_volumes ? [1] : []
+    content {
+      name        = "logs-volume"
+      volume_type = "EMPTYDIR"
+    }
+  }
+
+  # Additional volumes (user-defined)
   dynamic "volumes" {
     for_each = var.volumes
     content {

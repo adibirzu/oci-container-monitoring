@@ -242,13 +242,36 @@ log_group_name     = "${LOG_GROUP_NAME}"
 log_retention_days = ${LOG_RETENTION_DAYS}
 enable_audit_logs  = ${ENABLE_AUDIT_LOGS}
 
-# Management Agent Configuration
+# Management Agent Configuration (Legacy)
 enable_management_agent     = ${ENABLE_MANAGEMENT_AGENT}
 mgmt_agent_name            = "${MGMT_AGENT_NAME}"
 mgmt_agent_install_key_name = "${MGMT_AGENT_INSTALL_KEY_NAME}"
 prometheus_scrape_interval  = ${PROMETHEUS_SCRAPE_INTERVAL}
 prometheus_metrics_port     = ${PROMETHEUS_METRICS_PORT}
 prometheus_metrics_path     = "${PROMETHEUS_METRICS_PATH}"
+
+# Sidecar Architecture Configuration
+enable_shared_volumes             = ${ENABLE_SHARED_VOLUMES:-false}
+enable_management_agent_sidecar   = ${ENABLE_MANAGEMENT_AGENT_SIDECAR:-false}
+enable_prometheus_sidecar         = ${ENABLE_PROMETHEUS_SIDECAR:-false}
+
+# Sidecar Container Images
+mgmt_agent_sidecar_image    = "${MGMT_AGENT_SIDECAR_IMAGE:-}"
+prometheus_sidecar_image    = "${PROMETHEUS_SIDECAR_IMAGE:-}"
+
+# Sidecar Resource Allocation
+mgmt_agent_sidecar_memory_gb = ${MGMT_AGENT_SIDECAR_MEMORY_GB:-1.0}
+mgmt_agent_sidecar_ocpus     = ${MGMT_AGENT_SIDECAR_OCPUS:-0.25}
+prometheus_sidecar_memory_gb = ${PROMETHEUS_SIDECAR_MEMORY_GB:-1.0}
+prometheus_sidecar_ocpus     = ${PROMETHEUS_SIDECAR_OCPUS:-0.25}
+
+# Prometheus Exporters Configuration
+enable_prometheus_exporters  = ${ENABLE_PROMETHEUS_EXPORTERS:-true}
+enable_nginx_exporter       = ${ENABLE_NGINX_EXPORTER:-false}
+enable_redis_exporter       = ${ENABLE_REDIS_EXPORTER:-false}
+enable_postgres_exporter    = ${ENABLE_POSTGRES_EXPORTER:-false}
+enable_mysql_exporter       = ${ENABLE_MYSQL_EXPORTER:-false}
+enable_blackbox_exporter    = ${ENABLE_BLACKBOX_EXPORTER:-false}
 
 # Monitoring & Dashboards
 create_dashboard       = ${CREATE_DASHBOARD}

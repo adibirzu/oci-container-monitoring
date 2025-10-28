@@ -189,6 +189,102 @@ variable "prometheus_metrics_path" {
 }
 
 #######################################
+# Sidecar Architecture Variables
+#######################################
+variable "enable_shared_volumes" {
+  description = "Enable shared volumes for sidecar communication (/metrics, /logs)"
+  type        = bool
+  default     = false
+}
+
+variable "enable_management_agent_sidecar" {
+  description = "Enable Management Agent as sidecar container (new architecture)"
+  type        = bool
+  default     = false
+}
+
+variable "enable_prometheus_sidecar" {
+  description = "Enable Prometheus as sidecar container for metrics aggregation"
+  type        = bool
+  default     = false
+}
+
+variable "mgmt_agent_sidecar_image" {
+  description = "Management Agent sidecar container image URL (from OCIR)"
+  type        = string
+  default     = ""
+}
+
+variable "prometheus_sidecar_image" {
+  description = "Prometheus sidecar container image URL (from OCIR)"
+  type        = string
+  default     = ""
+}
+
+variable "mgmt_agent_sidecar_memory_gb" {
+  description = "Memory allocation for Management Agent sidecar in GB"
+  type        = number
+  default     = 1.0
+}
+
+variable "mgmt_agent_sidecar_ocpus" {
+  description = "OCPU allocation for Management Agent sidecar"
+  type        = number
+  default     = 0.25
+}
+
+variable "prometheus_sidecar_memory_gb" {
+  description = "Memory allocation for Prometheus sidecar in GB"
+  type        = number
+  default     = 1.0
+}
+
+variable "prometheus_sidecar_ocpus" {
+  description = "OCPU allocation for Prometheus sidecar"
+  type        = number
+  default     = 0.25
+}
+
+#######################################
+# Prometheus Exporters Variables
+#######################################
+variable "enable_prometheus_exporters" {
+  description = "Enable base Prometheus exporters (cAdvisor + Node Exporter)"
+  type        = bool
+  default     = true
+}
+
+variable "enable_nginx_exporter" {
+  description = "Enable Nginx Exporter for nginx metrics"
+  type        = bool
+  default     = false
+}
+
+variable "enable_redis_exporter" {
+  description = "Enable Redis Exporter for redis metrics"
+  type        = bool
+  default     = false
+}
+
+variable "enable_postgres_exporter" {
+  description = "Enable PostgreSQL Exporter for postgres metrics"
+  type        = bool
+  default     = false
+}
+
+variable "enable_mysql_exporter" {
+  description = "Enable MySQL Exporter for mysql metrics"
+  type        = bool
+  default     = false
+}
+
+variable "enable_blackbox_exporter" {
+  description = "Enable Blackbox Exporter for endpoint probing"
+  type        = bool
+  default     = false
+}
+
+#######################################
 # Monitoring Variables
 #######################################
 variable "create_dashboard" {

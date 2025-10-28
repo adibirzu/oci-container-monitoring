@@ -255,3 +255,60 @@ variable "metrics_namespace" {
   type        = string
   default     = "container_monitoring"
 }
+
+#######################################
+# Sidecar Container Images
+#######################################
+variable "enable_management_agent_sidecar" {
+  description = "Enable Management Agent as sidecar container (new architecture with custom image)"
+  type        = bool
+  default     = false
+}
+
+variable "enable_prometheus_sidecar" {
+  description = "Enable Prometheus as sidecar container for metrics aggregation"
+  type        = bool
+  default     = false
+}
+
+variable "enable_shared_volumes" {
+  description = "Enable shared volumes for sidecar communication (/metrics, /logs)"
+  type        = bool
+  default     = false
+}
+
+variable "mgmt_agent_sidecar_image" {
+  description = "Management Agent sidecar container image URL (custom image from OCIR)"
+  type        = string
+  default     = ""
+}
+
+variable "prometheus_sidecar_image" {
+  description = "Prometheus sidecar container image URL (custom image from OCIR)"
+  type        = string
+  default     = ""
+}
+
+variable "mgmt_agent_sidecar_memory_gb" {
+  description = "Memory allocation for Management Agent sidecar in GB"
+  type        = number
+  default     = 1.0
+}
+
+variable "mgmt_agent_sidecar_ocpus" {
+  description = "OCPU allocation for Management Agent sidecar"
+  type        = number
+  default     = 0.25
+}
+
+variable "prometheus_sidecar_memory_gb" {
+  description = "Memory allocation for Prometheus sidecar in GB"
+  type        = number
+  default     = 1.0
+}
+
+variable "prometheus_sidecar_ocpus" {
+  description = "OCPU allocation for Prometheus sidecar"
+  type        = number
+  default     = 0.25
+}

@@ -53,9 +53,11 @@ locals {
 
 #######################################
 # Image Pull Secret (for private OCIR images)
+# Note: Disabled to avoid conflicts with existing repositories
+# Using direct OCIR authentication via image_pull_secrets instead
 #######################################
 resource "oci_artifacts_container_repository" "image_pull_secret" {
-  count          = local.use_image_pull_secret ? 1 : 0
+  count          = 0  # Disabled - using direct OCIR authentication
   compartment_id = var.compartment_ocid
   display_name   = "${var.container_instance_name}-secret"
   is_public      = false
@@ -479,6 +481,52 @@ resource "oci_container_instances_container_instance" "main" {
         interval_in_seconds = 30
         timeout_in_seconds  = 10
         failure_threshold   = 3
+      }
+    }
+  }
+
+  # Log Forwarder Sidecar Container (New Architecture)
+  # Monitors application logs in shared volume and forwards to OCI Logging service
+  # Uses Resource Principal authentication for secure access
+  dynamic "containers" {
+    for_each = var.enable_log_forwarder_sidecar && var.log_forwarder_sidecar_image != "" ? [1] : []
+    content {
+      display_name = "${var.container_instance_name}-log-forwarder-sidecar"
+      image_url    = var.log_forwarder_sidecar_image
+
+      # Environment variables for log forwarder configuration
+      environment_variables = {
+        LOG_MOUNT_PATH = "/logs"
+        LOG_FILE       = "application.log"
+        LOG_OCID       = var.log_ocid != "" ? var.log_ocid : ""
+        LOG_HEADER     = "container-logs"
+        BATCH_SIZE     = "100"
+        FLUSH_INTERVAL = "5"
+      }
+
+      # Volume mounts for shared logs
+      dynamic "volume_mounts" {
+        for_each = var.enable_shared_volumes ? [1] : []
+        content {
+          mount_path  = "/logs"
+          volume_name = "logs-volume"
+          is_read_only = false
+        }
+      }
+
+      dynamic "volume_mounts" {
+        for_each = var.enable_shared_volumes ? [1] : []
+        content {
+          mount_path  = "/metrics"
+          volume_name = "metrics-volume"
+          is_read_only = false
+        }
+      }
+
+      # Resource allocation for Log Forwarder sidecar
+      resource_config {
+        memory_limit_in_gbs = var.log_forwarder_sidecar_memory_gb
+        vcpus_limit         = var.log_forwarder_sidecar_ocpus
       }
     }
   }

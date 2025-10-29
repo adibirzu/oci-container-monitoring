@@ -6,6 +6,10 @@
 # 1. Management Agent Sidecar
 # 2. Prometheus Sidecar
 # 3. Application with Metrics
+# 4. Log Forwarder Sidecar
+#
+# After successful build and push, it automatically updates
+# config/oci-monitoring.env with the new image URLs.
 #
 # Usage: ./build-all.sh [--skip-push] [--version VERSION]
 #######################################
@@ -214,6 +218,36 @@ else
 fi
 
 #######################################
+# Build Log Forwarder Sidecar
+#######################################
+echo ""
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}Building Log Forwarder Sidecar${NC}"
+echo -e "${GREEN}========================================${NC}"
+
+IMAGE_NAME="log-forwarder-sidecar"
+LOCAL_TAG="${IMAGE_NAME}:${VERSION}"
+OCIR_TAG="${OCIR_REPO_BASE}/${IMAGE_NAME}:${VERSION}"
+OCIR_TAG_LATEST="${OCIR_REPO_BASE}/${IMAGE_NAME}:latest"
+
+cd "${SCRIPT_DIR}/log-forwarder"
+echo -e "${BLUE}Building ${LOCAL_TAG}...${NC}"
+docker build --platform "${BUILD_PLATFORM}" -t "${LOCAL_TAG}" .
+
+echo -e "${BLUE}Tagging for OCIR: ${OCIR_TAG}${NC}"
+docker tag "${LOCAL_TAG}" "${OCIR_TAG}"
+docker tag "${LOCAL_TAG}" "${OCIR_TAG_LATEST}"
+
+if [ "$SKIP_PUSH" = false ]; then
+  echo -e "${BLUE}Pushing to OCIR...${NC}"
+  docker push "${OCIR_TAG}"
+  docker push "${OCIR_TAG_LATEST}"
+  echo -e "${GREEN}✓ Log Forwarder Sidecar pushed successfully${NC}"
+else
+  echo -e "${YELLOW}Skipping push (--skip-push enabled)${NC}"
+fi
+
+#######################################
 # Summary
 #######################################
 echo ""
@@ -225,18 +259,80 @@ echo -e "${BLUE}Built images:${NC}"
 echo -e "  1. ${OCIR_REPO_BASE}/mgmt-agent-sidecar:${VERSION}"
 echo -e "  2. ${OCIR_REPO_BASE}/prometheus-sidecar:${VERSION}"
 echo -e "  3. ${OCIR_REPO_BASE}/app-with-metrics:${VERSION}"
+echo -e "  4. ${OCIR_REPO_BASE}/log-forwarder-sidecar:${VERSION}"
 echo ""
 
 if [ "$SKIP_PUSH" = false ]; then
   echo -e "${GREEN}All images have been pushed to OCIR successfully!${NC}"
   echo ""
-  echo -e "${BLUE}Update your config/oci-monitoring.env with:${NC}"
-  echo -e "  export MGMT_AGENT_SIDECAR_IMAGE=\"${OCIR_REPO_BASE}/mgmt-agent-sidecar:${VERSION}\""
-  echo -e "  export PROMETHEUS_SIDECAR_IMAGE=\"${OCIR_REPO_BASE}/prometheus-sidecar:${VERSION}\""
-  echo -e "  export APP_WITH_METRICS_IMAGE=\"${OCIR_REPO_BASE}/app-with-metrics:${VERSION}\""
+
+  # Update config/oci-monitoring.env file automatically
+  echo -e "${BLUE}Updating config/oci-monitoring.env with new image URLs...${NC}"
+
+  # Define new image URLs
+  MGMT_AGENT_IMAGE="${OCIR_REPO_BASE}/mgmt-agent-sidecar:${VERSION}"
+  PROMETHEUS_IMAGE="${OCIR_REPO_BASE}/prometheus-sidecar:${VERSION}"
+  APP_IMAGE="${OCIR_REPO_BASE}/app-with-metrics:${VERSION}"
+  LOG_FORWARDER_IMAGE="${OCIR_REPO_BASE}/log-forwarder-sidecar:${VERSION}"
+
+  # Update or add image URLs in config file
+  if [ -f "$CONFIG_FILE" ]; then
+    # Update MGMT_AGENT_SIDECAR_IMAGE
+    if grep -q "^export MGMT_AGENT_SIDECAR_IMAGE=" "$CONFIG_FILE"; then
+      sed -i.bak "s|^export MGMT_AGENT_SIDECAR_IMAGE=.*|export MGMT_AGENT_SIDECAR_IMAGE=\"${MGMT_AGENT_IMAGE}\"|" "$CONFIG_FILE"
+    else
+      echo "export MGMT_AGENT_SIDECAR_IMAGE=\"${MGMT_AGENT_IMAGE}\"" >> "$CONFIG_FILE"
+    fi
+
+    # Update PROMETHEUS_SIDECAR_IMAGE
+    if grep -q "^export PROMETHEUS_SIDECAR_IMAGE=" "$CONFIG_FILE"; then
+      sed -i.bak "s|^export PROMETHEUS_SIDECAR_IMAGE=.*|export PROMETHEUS_SIDECAR_IMAGE=\"${PROMETHEUS_IMAGE}\"|" "$CONFIG_FILE"
+    else
+      echo "export PROMETHEUS_SIDECAR_IMAGE=\"${PROMETHEUS_IMAGE}\"" >> "$CONFIG_FILE"
+    fi
+
+    # Update APP_WITH_METRICS_IMAGE
+    if grep -q "^export APP_WITH_METRICS_IMAGE=" "$CONFIG_FILE"; then
+      sed -i.bak "s|^export APP_WITH_METRICS_IMAGE=.*|export APP_WITH_METRICS_IMAGE=\"${APP_IMAGE}\"|" "$CONFIG_FILE"
+    else
+      echo "export APP_WITH_METRICS_IMAGE=\"${APP_IMAGE}\"" >> "$CONFIG_FILE"
+    fi
+
+    # Update LOG_FORWARDER_SIDECAR_IMAGE
+    if grep -q "^export LOG_FORWARDER_SIDECAR_IMAGE=" "$CONFIG_FILE"; then
+      sed -i.bak "s|^export LOG_FORWARDER_SIDECAR_IMAGE=.*|export LOG_FORWARDER_SIDECAR_IMAGE=\"${LOG_FORWARDER_IMAGE}\"|" "$CONFIG_FILE"
+    else
+      echo "export LOG_FORWARDER_SIDECAR_IMAGE=\"${LOG_FORWARDER_IMAGE}\"" >> "$CONFIG_FILE"
+    fi
+
+    # Also update CONTAINER_IMAGE to use the app-with-metrics image
+    if grep -q "^export CONTAINER_IMAGE=" "$CONFIG_FILE"; then
+      sed -i.bak "s|^export CONTAINER_IMAGE=.*|export CONTAINER_IMAGE=\"${APP_IMAGE}\"|" "$CONFIG_FILE"
+    fi
+
+    # Clean up backup file
+    rm -f "${CONFIG_FILE}.bak"
+
+    echo -e "${GREEN}✓ Configuration file updated successfully!${NC}"
+    echo ""
+    echo -e "${BLUE}Updated image URLs:${NC}"
+    echo -e "  MGMT_AGENT_SIDECAR_IMAGE=\"${MGMT_AGENT_IMAGE}\""
+    echo -e "  PROMETHEUS_SIDECAR_IMAGE=\"${PROMETHEUS_IMAGE}\""
+    echo -e "  APP_WITH_METRICS_IMAGE=\"${APP_IMAGE}\""
+    echo -e "  LOG_FORWARDER_SIDECAR_IMAGE=\"${LOG_FORWARDER_IMAGE}\""
+    echo -e "  CONTAINER_IMAGE=\"${APP_IMAGE}\""
+  else
+    echo -e "${YELLOW}Warning: Config file not found at $CONFIG_FILE${NC}"
+    echo -e "${BLUE}Please create it with the following content:${NC}"
+    echo -e "  export MGMT_AGENT_SIDECAR_IMAGE=\"${MGMT_AGENT_IMAGE}\""
+    echo -e "  export PROMETHEUS_SIDECAR_IMAGE=\"${PROMETHEUS_IMAGE}\""
+    echo -e "  export APP_WITH_METRICS_IMAGE=\"${APP_IMAGE}\""
+    echo -e "  export LOG_FORWARDER_SIDECAR_IMAGE=\"${LOG_FORWARDER_IMAGE}\""
+  fi
+
   echo ""
   echo -e "${BLUE}Next steps:${NC}"
-  echo -e "  1. Update config/oci-monitoring.env with the image URLs above"
+  echo -e "  1. Review updated config/oci-monitoring.env"
   echo -e "  2. Run: ./scripts/deploy.sh deploy"
 else
   echo -e "${YELLOW}Images built locally but not pushed to OCIR${NC}"

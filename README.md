@@ -1,514 +1,706 @@
-# OCI Container Instance Monitoring with Prometheus
+# OCI Container Instance Monitoring Demo
 
-Production-ready monitoring solution for OCI Container Instances with Prometheus, Grafana, and OCI Management Agent integration.
+Production-ready monitoring solution for OCI Container Instances with sidecar-based Prometheus metrics collection, log forwarding, and automatic Management Agent registration.
 
-## Overview
+## 🎯 Overview
 
-This solution provides comprehensive Docker/container monitoring using industry-standard tools:
+This demo provides comprehensive container monitoring using a modern sidecar architecture:
 
-- **🐳 cAdvisor**: Container-level metrics (CPU, memory, network, disk per container)
-- **📊 Node Exporter**: Host-level system metrics
-- **📈 Prometheus**: Time-series metrics collection and storage
-- **📉 Grafana**: Rich visualization dashboards
-- **☁️ OCI Management Agent**: Integration with OCI Monitoring service
-- **🔒 Network Security**: NSG-based access control
-- **📦 Automated Deployment**: Single-command infrastructure provisioning
+- **📊 Sidecar-Based Monitoring**: Management Agent, Prometheus, and Log Forwarder run as sidecar containers
+- **🔄 Automatic Registration**: Management Agent auto-registers with your OCI tenancy
+- **📝 Log Forwarding**: Automatic log collection and forwarding to OCI Logging
+- **🔒 Network Security**: NSG with automatic IP detection for secure access
+- **📦 One-Command Deployment**: Fully automated infrastructure provisioning
+- **🐳 Multi-Exporter Support**: cAdvisor, Node Exporter, and application-specific exporters
 
-## Architecture
+## 🏗️ Sidecar Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                  Monitoring VM (1 OCPU, 8GB)             │
-│  ┌──────────────┐  ┌────────────┐  ┌─────────────────┐ │
-│  │ Management   │  │ Prometheus │  │ Grafana         │ │
-│  │ Agent        │◄─┤ :9090      │◄─┤ :3000           │ │
-│  │ + Prometheus │  │            │  │                 │ │
-│  │   Plugin     │  │            │  │                 │ │
-│  └──────┬───────┘  └─────┬──────┘  └─────────────────┘ │
-│         │                 │                              │
-│         ↓                 ↓ Scrapes every 15s            │
-│   OCI Monitoring   Containers (Private IPs)              │
-└────────────────────────────────────────────────────────┘
-                             ↓
-    ┌────────────────────────┼────────────────────────┐
-    │                        │                        │
-┌───▼────────────┐  ┌───────▼───────┐  ┌─────────▼──────┐
-│ Container 1    │  │ Container 2   │  │ Container N    │
-│ ├─ App         │  │ ├─ App        │  │ ├─ App         │
-│ ├─ cAdvisor    │  │ ├─ cAdvisor   │  │ ├─ cAdvisor    │
-│ │  :8080       │  │ │  :8080      │  │ │  :8080       │
-│ └─ Node Exp.   │  │ └─ Node Exp.  │  │ └─ Node Exp.   │
-│    :9100       │  │    :9100      │  │    :9100       │
-└────────────────┘  └───────────────┘  └────────────────┘
+┌───────────────────────────────────────────────────────────────────┐
+│              OCI Container Instance (Pod-like)                    │
+│                                                                   │
+│  ┌─────────────────┐  ┌──────────────────┐  ┌──────────────────┐│
+│  │  Application    │  │  Management      │  │  Prometheus      ││
+│  │  Container      │  │  Agent Sidecar   │  │  Sidecar         ││
+│  │                 │  │                  │  │                  ││
+│  │  - App :80      │  │  - Downloads &   │  │  - Aggregates    ││
+│  │  - Metrics :9090│◄─┤    Installs      │◄─┤    metrics       ││
+│  │                 │  │  - Registers     │  │  - Scrapes :9090 ││
+│  │                 │  │    with OCI      │  │                  ││
+│  └────────┬────────┘  │  - Sends to OCI  │  └──────────────────┘│
+│           │           │    Monitoring    │                       │
+│           │           └──────────────────┘                       │
+│           │                                                      │
+│           │           ┌──────────────────┐                      │
+│           │           │  Log Forwarder   │                      │
+│           └──────────►│  Sidecar         │                      │
+│      Writes logs      │                  │                      │
+│      to /logs         │  - Monitors /logs│                      │
+│                       │  - Forwards to   │                      │
+│                       │    OCI Logging   │                      │
+│                       └──────────────────┘                      │
+│                                                                   │
+│  Shared Volumes:                                                 │
+│  • /metrics  - Shared between App & Prometheus                   │
+│  • /logs     - Shared between App & Log Forwarder               │
+└───────────────────────────────────────────────────────────────────┘
+                              ↓
+                    ┌─────────┴─────────┐
+                    │                   │
+              ┌─────▼──────┐    ┌──────▼───────┐
+              │OCI          │    │OCI           │
+              │Monitoring   │    │Logging       │
+              │             │    │              │
+              │Namespace:   │    │Custom Logs   │
+              │container_   │    │              │
+              │monitoring   │    │              │
+              └─────────────┘    └──────────────┘
 ```
 
-## ✨ Features
+## ✨ Key Features
 
-### Comprehensive Monitoring
-- ✅ Container-level metrics (per-container CPU, memory, network, disk)
-- ✅ Host-level metrics (system resources, filesystem, interfaces)
-- ✅ Native OCI metrics (automatic, no configuration)
-- ✅ Custom application metrics (Prometheus-compatible)
-- ✅ 15-second scrape interval (real-time monitoring)
-- ✅ Multiple Prometheus exporters available (see below)
+### Automated Monitoring
+- ✅ **Management Agent Auto-Registration**: Automatically registers with OCI tenancy using install key
+- ✅ **Sidecar-Based Collection**: No agent installation needed on host
+- ✅ **Prometheus Integration**: Metrics collected via Prometheus protocol
+- ✅ **OCI Monitoring**: Metrics appear in `container_monitoring` namespace
+- ✅ **Real-time Collection**: 60-second default scrape interval (configurable)
 
-### Available Prometheus Exporters
+### Log Management
+- ✅ **Automatic Log Forwarding**: Sidecar monitors and forwards logs to OCI Logging
+- ✅ **Shared Volume Pattern**: Application writes to `/logs`, forwarder reads and sends
+- ✅ **Batch Processing**: Efficient batching with configurable size
+- ✅ **Resource Principal Auth**: Secure, credential-less authentication
 
-This project supports multiple Prometheus exporters as sidecars for comprehensive monitoring:
+### Network Security
+- ✅ **Automatic IP Detection**: NSG automatically configured with your public IP
+- ✅ **Port-Based Rules**: Secure access to all monitoring ports
+- ✅ **Least Privilege**: Only necessary ports exposed to your IP
 
-**Always Available:**
-- **cAdvisor** (port 8080) - Container-level metrics (CPU, memory, network, disk per container)
-- **Node Exporter** (port 9100) - Host-level metrics (system resources, filesystem, network)
+### Container Images Built
+1. **Management Agent Sidecar** - Registers and reports metrics to OCI
+2. **Prometheus Sidecar** - Aggregates metrics from local endpoints
+3. **Application with Metrics** - Sample app exposing Prometheus metrics
+4. **Log Forwarder Sidecar** - Monitors and forwards logs to OCI Logging
 
-**Optional Application-Specific Exporters:**
-- **Nginx Exporter** (port 9113) - Nginx web server metrics (connections, requests, response codes)
-- **Redis Exporter** (port 9121) - Redis cache metrics (memory, keyspace, clients, commands)
-- **PostgreSQL Exporter** (port 9187) - PostgreSQL database metrics (connections, transactions, locks, queries)
-- **MySQL Exporter** (port 9104) - MySQL database metrics (connections, queries, InnoDB metrics)
-- **Blackbox Exporter** (port 9115) - Endpoint probing (HTTP/HTTPS availability, response time, SSL validity)
+## 📋 Prerequisites
 
-**Enable specific exporters in your configuration:**
-```bash
-# Edit config/oci-monitoring.env
-export ENABLE_PROMETHEUS_EXPORTERS="true"  # cAdvisor + Node Exporter (always recommended)
-export ENABLE_NGINX_EXPORTER="true"        # If monitoring nginx
-export ENABLE_REDIS_EXPORTER="true"        # If monitoring redis
-export ENABLE_POSTGRES_EXPORTER="true"     # If monitoring postgres
-export ENABLE_MYSQL_EXPORTER="true"        # If monitoring mysql
-export ENABLE_BLACKBOX_EXPORTER="true"     # For endpoint health checks
+### Required Tools
+- **Terraform** >= 1.0.0
+- **OCI CLI** configured with valid credentials
+- **Docker** for building container images
+- **Git** for cloning repository
+
+### OCI Resources Required
+- OCI tenancy with appropriate compartment
+- VCN with subnet
+- OCIR (Oracle Cloud Infrastructure Registry) access
+- IAM permissions for:
+  - Container Instances
+  - Management Agents
+  - Monitoring
+  - Logging
+  - Networking (NSG creation)
+
+### OCI IAM Policies
+
+The solution automatically creates necessary IAM policies and dynamic groups. Required root-level policies:
+
+```hcl
+# Allow Container Instances to use OCI services
+Allow dynamic-group <prefix>-container-instance-dg to manage all-resources in compartment <compartment>
+
+# Allow Management Agent operations
+Allow dynamic-group <prefix>-container-instance-dg to manage management-agents in compartment <compartment>
+Allow dynamic-group <prefix>-container-instance-dg to use metrics in compartment <compartment>
+
+# Allow log forwarding
+Allow dynamic-group <prefix>-container-instance-dg to use log-content in compartment <compartment>
 ```
-
-### Visualization & Dashboards
-- ✅ Pre-configured Grafana dashboards
-- ✅ Docker container monitoring dashboard
-- ✅ Prometheus health dashboard
-- ✅ Customizable panels and queries
-- ✅ PromQL support for advanced queries
-
-### OCI Integration
-- ✅ Management Agent sends metrics to OCI Monitoring
-- ✅ Available in `oci_prometheus_metrics` namespace
-- ✅ OCI Alarms integration
-- ✅ Works alongside native OCI metrics
-
-### Security
-- ✅ Network Security Groups (NSG) with IP restrictions
-- ✅ Monitoring VM can scrape containers securely
-- ✅ Your IP has access to Grafana and Prometheus
-- ✅ All other IPs blocked
-
-### Automation
-- ✅ Single-command deployment
-- ✅ Automated VM provisioning with cloud-init
-- ✅ Pre-configured Prometheus scraping
-- ✅ Ready-to-use Grafana dashboards
-- ✅ OCI Management Agent auto-configuration
 
 ## 🚀 Quick Start
 
-### 1. Prerequisites
+### 1. Clone Repository
 
-**System Requirements:**
-- OCI CLI (v3.0+)
-- Terraform (v1.5.0+)
-- jq, curl
-- OCI tenancy with:
-  - Compartment with permissions
-  - VCN and subnet
-  - Management Agent Install Key
-
-**Install on macOS:**
 ```bash
-brew install oci-cli terraform jq
+git clone https://github.com/your-username/oci-container-monitoring-demo.git
+cd oci-container-monitoring-demo
 ```
 
-**Install on Linux:**
-```bash
-# Install OCI CLI
-bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)"
+### 2. Configure Environment
 
-# Install Terraform
-# See: https://developer.hashicorp.com/terraform/install
+```bash
+# Copy example configuration
+cp config/oci-monitoring.env.example config/oci-monitoring.env
+
+# Edit configuration with your OCI details
+vi config/oci-monitoring.env
 ```
 
-### 2. Configure OCI CLI
+**Required Configuration:**
 
 ```bash
-oci setup config
-# Follow prompts for API key, tenancy OCID, region, etc.
-```
+# OCI Authentication
+export OCI_REGION="eu-frankfurt-1"
+export OCI_TENANCY_OCID="ocid1.tenancy.oc1..aaaa..."
+export OCI_COMPARTMENT_OCID="ocid1.compartment.oc1..aaaa..."
 
-### 3. Configure Monitoring
-
-Edit `config/oci-monitoring.env`:
-
-```bash
-# Required OCI Configuration
-export TENANCY_OCID="ocid1.tenancy.oc1..aaaa..."
-export COMPARTMENT_OCID="ocid1.compartment.oc1..aaaa..."
-export REGION="us-ashburn-1"
-
-# VCN Configuration
+# Networking
 export VCN_OCID="ocid1.vcn.oc1..aaaa..."
 export SUBNET_OCID="ocid1.subnet.oc1..aaaa..."
 
-# Enable Prometheus Exporters (cAdvisor + Node Exporter)
-export ENABLE_PROMETHEUS_EXPORTERS="true"
+# OCIR Credentials (for pushing custom images)
+export OCIR_USERNAME="<namespace>/<username>"
+export OCIR_PASSWORD="<auth_token>"
 
-# Deploy Monitoring VM with Grafana
-export DEPLOY_MONITORING_VM="true"
-export ENABLE_GRAFANA="true"
+# Container Configuration
+export CONTAINER_INSTANCE_NAME="monitoring-demo"
 
-# Security
-export CREATE_NSG="true"
-export ALLOWED_CIDR="<your-ip>/32"
-
-# Access
-export SSH_PUBLIC_KEY="$(cat ~/.ssh/id_rsa.pub)"
-export GRAFANA_ADMIN_PASSWORD="YourSecurePassword123"
-
-# Management Agent Install Key (from OCI Console)
-export MGMT_AGENT_INSTALL_KEY="<your-install-key>"
+# Sidecar Architecture (Enable all sidecars)
+export ENABLE_SHARED_VOLUMES="true"
+export ENABLE_MANAGEMENT_AGENT_SIDECAR="true"
+export ENABLE_PROMETHEUS_SIDECAR="true"
+export ENABLE_LOG_FORWARDER_SIDECAR="true"
 ```
 
-### 4. Deploy
+### 3. Build and Push Container Images
 
 ```bash
-cd /Users/abirzu/dev/oci-monitoring
-
-# Deploy infrastructure
-./scripts/deploy.sh deploy
-
-# Wait 10-15 minutes for:
-# - Container instances with exporters
-# - Monitoring VM with full stack
-# - Automatic configuration
+cd docker
+./build-all.sh
 ```
 
-### 5. Access Monitoring
+**What this does:**
+- Builds 4 container images:
+  1. Management Agent Sidecar
+  2. Prometheus Sidecar
+  3. Application with Metrics
+  4. Log Forwarder Sidecar
+- Pushes images to OCIR
+- **Automatically updates** `config/oci-monitoring.env` with image URLs
 
-After deployment:
+**Output:**
+```
+✓ Configuration file updated successfully!
 
-**Grafana:**
-- URL: `http://<monitoring-vm-ip>:3000`
-- Username: `admin`
-- Password: (your configured password)
-- Dashboard: Navigate to "Docker Container Monitoring"
-
-**Prometheus:**
-- URL: `http://<monitoring-vm-ip>:9090`
-- Check targets: Status → Targets
-- Run queries: Graph tab
-
-**OCI Monitoring:**
-- Navigate to: Observability & Management → Monitoring
-- Namespace: `oci_prometheus_metrics`
-- Metric Namespace: `container_monitoring`
-
-## 📊 Monitoring Capabilities
-
-### Metrics Collected
-
-**From cAdvisor (Container Metrics):**
-- `container_cpu_usage_seconds_total` - CPU usage per container
-- `container_memory_usage_bytes` - Memory usage per container
-- `container_network_receive_bytes_total` - Network RX per container
-- `container_network_transmit_bytes_total` - Network TX per container
-- `container_fs_reads_bytes_total` - Disk reads per container
-- `container_fs_writes_bytes_total` - Disk writes per container
-
-**From Node Exporter (Host Metrics):**
-- `node_cpu_seconds_total` - CPU usage by mode (idle, user, system)
-- `node_memory_*` - Memory statistics (total, available, buffers, cache)
-- `node_disk_*` - Disk I/O statistics
-- `node_network_*` - Network interface statistics
-- `node_filesystem_*` - Filesystem usage and inodes
-- `node_load*` - System load average
-
-**From OCI Native:**
-- `CpuUtilization` - Container instance CPU %
-- `MemoryUtilization` - Container instance memory %
-- `NetworkBytesIn/Out` - Network traffic
-
-### Example PromQL Queries
-
-```promql
-# Container CPU usage (%)
-rate(container_cpu_usage_seconds_total{image!=""}[5m]) * 100
-
-# Container memory usage (GB)
-container_memory_usage_bytes{image!=""} / 1024 / 1024 / 1024
-
-# Node CPU usage (%)
-100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
-
-# Node memory usage (%)
-100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))
-
-# Container network traffic (MB/s)
-rate(container_network_receive_bytes_total{image!=""}[5m]) / 1024 / 1024
+Updated image URLs:
+  MGMT_AGENT_SIDECAR_IMAGE="fra.ocir.io/.../mgmt-agent-sidecar:1.0.0"
+  PROMETHEUS_SIDECAR_IMAGE="fra.ocir.io/.../prometheus-sidecar:1.0.0"
+  APP_WITH_METRICS_IMAGE="fra.ocir.io/.../app-with-metrics:1.0.0"
+  LOG_FORWARDER_SIDECAR_IMAGE="fra.ocir.io/.../log-forwarder-sidecar:1.0.0"
 ```
 
-## 💰 Cost Analysis
-
-### Monthly Costs (Approximate)
-
-| Component | Configuration | Cost |
-|-----------|---------------|------|
-| Container Instance (with exporters) | 1 OCPU, 4GB | $10 |
-| Monitoring VM | 1 OCPU, 8GB | $15 |
-| **Total for 1 container** | | **$25** |
-| **Total for 10 containers** | | **$115** |
-| **Total for 50 containers** | | **$515** |
-
-**Key Insight**: Monitoring VM cost ($15) is fixed, so per-container cost decreases as you scale.
-
-### Resource Overhead Per Container
-
-**Base Exporters (Always Enabled):**
-
-| Component | Memory | CPU | % of 1 OCPU Instance |
-|-----------|--------|-----|----------------------|
-| Application | Dynamic | Dynamic | ~80% |
-| cAdvisor | 500MB | 0.1 OCPU | ~8% |
-| Node Exporter | 300MB | 0.1 OCPU | ~7% |
-| **Base Overhead** | **800MB** | **0.2 OCPU** | **15%** |
-
-**Optional Exporters (Enable as needed):**
-
-| Exporter | Memory | CPU | Port |
-|----------|--------|-----|------|
-| Nginx Exporter | 100MB | 0.05 OCPU | 9113 |
-| Redis Exporter | 100MB | 0.05 OCPU | 9121 |
-| PostgreSQL Exporter | 150MB | 0.05 OCPU | 9187 |
-| MySQL Exporter | 150MB | 0.05 OCPU | 9104 |
-| Blackbox Exporter | 100MB | 0.05 OCPU | 9115 |
-| **All Optional Combined** | **600MB** | **0.25 OCPU** | - |
-
-**Maximum Total (if all exporters enabled):** 1.4GB memory, 0.45 OCPU overhead
-
-## 📚 Documentation
-
-### Comprehensive Guides
-
-1. **[Prometheus Monitoring Guide](./docs/PROMETHEUS_MONITORING_GUIDE.md)**
-   - Complete setup and configuration
-   - All components explained in detail
-   - PromQL query examples
-   - Troubleshooting procedures
-   - Maintenance guides
-
-2. **[Container Instance Monitoring](./docs/CONTAINER_INSTANCE_MONITORING.md)**
-   - Native metrics vs Prometheus comparison
-   - Use case recommendations
-   - Architecture options
-
-3. **[Prometheus Enhancement Summary](./PROMETHEUS_ENHANCEMENT_SUMMARY.md)**
-   - What was implemented
-   - Configuration changes
-   - Testing procedures
-
-4. **[Architecture Guide](./docs/ARCHITECTURE_GUIDE.md)**
-   - Architecture patterns
-   - Deployment scenarios
-   - Migration paths
-
-### Quick References
-
-- **[Container Logs](./docs/CONTAINER_LOGS.md)** - Logging configuration
-- **[Quickstart Guide](./docs/QUICKSTART.md)** - Fast deployment guide
-- **[Troubleshooting](./docs/TROUBLESHOOTING.md)** - Common issues and solutions
-
-## 🔧 Configuration Options
-
-### Monitoring Options
+### 4. Deploy Infrastructure
 
 ```bash
-# Enable/disable Prometheus exporters (cAdvisor + Node Exporter)
-export ENABLE_PROMETHEUS_EXPORTERS="true"  # Default: true
-
-# Deploy centralized Monitoring VM
-export DEPLOY_MONITORING_VM="true"  # Default: false
-
-# Enable Grafana dashboards
-export ENABLE_GRAFANA="true"  # Default: false
-
-# Prometheus scrape interval
-export PROMETHEUS_SCRAPE_INTERVAL="15"  # Default: 15 seconds
-```
-
-### Security Options
-
-```bash
-# Create Network Security Groups
-export CREATE_NSG="true"
-
-# Allowed IP CIDR (your IP only)
-export ALLOWED_CIDR="1.2.3.4/32"
-
-# SSH public key for VM access
-export SSH_PUBLIC_KEY="$(cat ~/.ssh/id_rsa.pub)"
-```
-
-### Container Options
-
-```bash
-# Container configuration
-export CONTAINER_IMAGE="nginx:latest"
-export CONTAINER_OCPUS="1"
-export CONTAINER_MEMORY_GB="4"
-export CONTAINER_PORT="80"
-
-# Container environment variables
-export CONTAINER_ENV_VARS="ENV=production,DEBUG=false"
-```
-
-## 🛠️ Common Tasks
-
-### View Metrics in Grafana
-
-```bash
-# Get Monitoring VM IP
-cd terraform
-terraform output monitoring_vm_public_ip
-
-# Open browser
-# http://<vm-ip>:3000
-# Login: admin / <your-password>
-# Navigate: Dashboards → Browse → Docker Container Monitoring
-```
-
-### Query Prometheus
-
-```bash
-# Access Prometheus UI
-# http://<vm-ip>:9090
-
-# Or query via API
-curl "http://<vm-ip>:9090/api/v1/query?query=up"
-```
-
-### Check Scraping Status
-
-```bash
-# SSH to Monitoring VM
-ssh opc@<vm-ip>
-
-# Check Prometheus targets
-curl http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {job, instance, health}'
-
-# Check Prometheus logs
-sudo journalctl -u prometheus -f
-
-# Check Grafana logs
-sudo journalctl -u grafana-server -f
-
-# Check Management Agent logs
-sudo journalctl -u mgmt_agent -f
-```
-
-### Update Container Instances
-
-```bash
-# Edit configuration
-vi config/oci-monitoring.env
-
-# Apply changes
+cd ..
 ./scripts/deploy.sh deploy
 ```
 
-### Destroy All Resources
+**Deployment includes:**
+- ✅ IAM policies and dynamic groups
+- ✅ Management Agent install key creation
+- ✅ **NSG with automatic IP detection**
+- ✅ Container Instance with all sidecars
+- ✅ OCI Logging log group and logs
+- ✅ Optional monitoring alarms
+
+### 5. Verify Deployment
+
+#### Check Management Agent Registration
 
 ```bash
-./scripts/deploy.sh destroy
+# List Management Agents in your compartment
+oci management-agent agent list \
+  --compartment-id $OCI_COMPARTMENT_OCID \
+  --lifecycle-state ACTIVE \
+  --query 'data[*].{"Name":"display-name","State":"lifecycle-state","Host":"host"}' \
+  --output table
+```
+
+**Expected Output:**
+```
++---------------------------------+---------+---------------------------+
+| Name                            | State   | Host                      |
++---------------------------------+---------+---------------------------+
+| <hostname>-mgmt-agent          | ACTIVE  | monitoring-demo-app       |
++---------------------------------+---------+---------------------------+
+```
+
+#### View Metrics in OCI Console
+
+1. Navigate to: **Observability & Management → Monitoring → Metrics Explorer**
+2. Select your compartment
+3. Choose namespace: **`container_monitoring`**
+4. Select metrics:
+   - `container_cpu_usage_seconds_total`
+   - `container_memory_usage_bytes`
+   - `app_requests_total` (custom metric)
+
+#### View Logs in OCI Console
+
+1. Navigate to: **Observability & Management → Logging → Logs**
+2. Find log group: **`container-instance-logs`**
+3. View logs:
+   - **Application Log** - Application stdout/stderr
+   - **System Log** - Container system logs
+
+#### Check Container Status
+
+```bash
+# Get container instance details
+oci container-instances container-instance get \
+  --container-instance-id <instance-ocid> \
+  --query 'data.{"State":"lifecycle-state","Containers":"containers[*].{Name:display-name,State:lifecycle-state}"}' \
+  --output json
+```
+
+**Expected Output:**
+```json
+{
+  "State": "ACTIVE",
+  "Containers": [
+    {
+      "Name": "monitoring-demo-app",
+      "State": "ACTIVE"
+    },
+    {
+      "Name": "monitoring-demo-mgmt-agent-sidecar",
+      "State": "ACTIVE"
+    },
+    {
+      "Name": "monitoring-demo-prometheus-sidecar",
+      "State": "ACTIVE"
+    },
+    {
+      "Name": "monitoring-demo-log-forwarder-sidecar",
+      "State": "ACTIVE"
+    }
+  ]
+}
+```
+
+## 📊 Complete Workflow
+
+### Phase 1: Build Container Images (docker/build-all.sh)
+
+```
+1. Login to OCIR
+2. Build Management Agent Sidecar
+   └─ Install Management Agent RPM
+   └─ Configure registration script
+3. Build Prometheus Sidecar
+   └─ Configure scrape targets
+4. Build Application with Metrics
+   └─ Sample app with /metrics endpoint
+5. Build Log Forwarder Sidecar
+   └─ OCI SDK + watchdog library
+6. Push all images to OCIR
+7. AUTO-UPDATE config/oci-monitoring.env
+   └─ Updates all image URLs automatically!
+```
+
+### Phase 2: Terraform Infrastructure (./scripts/deploy.sh deploy)
+
+```
+1. Initialize Terraform
+2. Detect Your Public IP (automatic)
+   └─ Uses https://ifconfig.me/ip
+3. Create IAM Resources
+   ├─ Dynamic Group for Container Instances
+   ├─ Policies for Management Agent
+   ├─ Policies for Monitoring
+   └─ Policies for Logging
+4. Create NSG with Your IP
+   ├─ HTTP/HTTPS: 80, 443
+   ├─ Prometheus: 9090
+   ├─ cAdvisor: 8080
+   ├─ Node Exporter: 9100
+   └─ Optional exporters: 9104, 9113, 9115, 9121, 9187
+5. Create Management Agent Install Key
+6. Create Logging Resources
+   ├─ Log Group
+   ├─ Application Log
+   └─ System Log
+7. Deploy Container Instance
+   ├─ Application Container
+   ├─ Management Agent Sidecar
+   ├─ Prometheus Sidecar
+   └─ Log Forwarder Sidecar
+8. Attach NSG to Container Instance
+9. Configure Shared Volumes
+   ├─ /metrics (App ↔ Prometheus)
+   └─ /logs (App ↔ Log Forwarder)
+```
+
+### Phase 3: Container Startup & Registration
+
+```
+Application Container:
+1. Starts application on port 80
+2. Exposes Prometheus metrics on :9090/metrics
+3. Writes logs to /logs/application.log
+
+Management Agent Sidecar:
+1. Downloads Management Agent RPM
+2. Installs agent
+3. Creates response file with install key
+4. Runs setup.sh → REGISTERS WITH OCI
+   ├─ Validates install key
+   ├─ Generates communication wallet
+   ├─ Generates security artifacts
+   └─ Registers with Management Agent service
+5. Configures Prometheus plugin
+6. Starts agent (agentcore start)
+7. Begins scraping localhost:9090/metrics
+8. Forwards metrics to OCI Monitoring
+
+Prometheus Sidecar:
+1. Loads configuration
+2. Scrapes localhost:9090/metrics every 60s
+3. Aggregates metrics
+4. Provides aggregated metrics to Management Agent
+
+Log Forwarder Sidecar:
+1. Monitors /logs directory using watchdog
+2. Detects new log entries
+3. Batches logs (configurable batch size)
+4. Forwards to OCI Logging using Resource Principal
+5. Continues monitoring for new logs
+```
+
+### Phase 4: Monitoring & Verification
+
+```
+OCI Management Agent Console:
+1. Navigate to: Observability & Management → Management Agents
+2. Find agent: <hostname>-mgmt-agent
+3. Status: ACTIVE
+4. Plugin: Prometheus (Enabled)
+
+OCI Monitoring Console:
+1. Navigate to: Observability & Management → Monitoring → Metrics Explorer
+2. Namespace: container_monitoring
+3. View metrics:
+   ├─ container_cpu_usage_seconds_total
+   ├─ container_memory_usage_bytes
+   ├─ container_network_receive_bytes_total
+   ├─ container_network_transmit_bytes_total
+   ├─ node_cpu_seconds_total
+   ├─ node_memory_MemAvailable_bytes
+   └─ app_requests_total (custom)
+
+OCI Logging Console:
+1. Navigate to: Observability & Management → Logging → Logs
+2. Log Group: container-instance-logs
+3. Logs:
+   ├─ Application Log (from /logs/application.log)
+   └─ System Log (container system events)
+```
+
+## 🗂️ Project Structure
+
+```
+oci-container-monitoring-demo/
+├── config/
+│   └── oci-monitoring.env          # Main configuration (auto-updated by build-all.sh)
+├── docker/
+│   ├── build-all.sh                # Builds all 4 images + AUTO-UPDATES .env
+│   ├── management-agent/
+│   │   ├── Dockerfile
+│   │   └── entrypoint.sh           # Agent registration & startup
+│   ├── prometheus/
+│   │   ├── Dockerfile
+│   │   └── prometheus.yml
+│   ├── app-with-metrics/
+│   │   ├── Dockerfile
+│   │   └── app.py                  # Sample app with /metrics
+│   └── log-forwarder/
+│       ├── Dockerfile
+│       ├── log-forwarder.py        # Monitors /logs and forwards to OCI
+│       └── config.json.template
+├── terraform/
+│   ├── main.tf                     # Main config + NSG module
+│   ├── variables.tf
+│   ├── outputs.tf                  # Includes detected IP & NSG info
+│   └── modules/
+│       ├── container-instance/     # Container Instance + sidecars
+│       ├── iam/                    # Policies + dynamic groups
+│       ├── logging/                # OCI Logging resources
+│       ├── management-agent/       # Install key creation
+│       └── nsg/                    # Network Security Group
+├── scripts/
+│   └── deploy.sh                   # Deployment orchestration
+└── README.md                       # This file
+```
+
+## 🔧 Configuration Reference
+
+### Sidecar Architecture Variables
+
+```bash
+# Enable sidecar pattern
+export ENABLE_SHARED_VOLUMES="true"
+
+# Management Agent Sidecar
+export ENABLE_MANAGEMENT_AGENT_SIDECAR="true"
+export MGMT_AGENT_SIDECAR_IMAGE="fra.ocir.io/.../mgmt-agent-sidecar:1.0.0"
+export MGMT_AGENT_SIDECAR_MEMORY_GB="1.0"
+export MGMT_AGENT_SIDECAR_OCPUS="0.25"
+
+# Prometheus Sidecar
+export ENABLE_PROMETHEUS_SIDECAR="true"
+export PROMETHEUS_SIDECAR_IMAGE="fra.ocir.io/.../prometheus-sidecar:1.0.0"
+export PROMETHEUS_SIDECAR_MEMORY_GB="1.0"
+export PROMETHEUS_SIDECAR_OCPUS="0.25"
+
+# Log Forwarder Sidecar
+export ENABLE_LOG_FORWARDER_SIDECAR="true"
+export LOG_FORWARDER_SIDECAR_IMAGE="fra.ocir.io/.../log-forwarder-sidecar:1.0.0"
+export LOG_FORWARDER_SIDECAR_MEMORY_GB="0.5"
+export LOG_FORWARDER_SIDECAR_OCPUS="0.125"
+```
+
+### Prometheus Exporter Configuration
+
+```bash
+# Base exporters (always recommended)
+export ENABLE_PROMETHEUS_EXPORTERS="true"  # cAdvisor + Node Exporter
+
+# Application-specific exporters (optional)
+export ENABLE_NGINX_EXPORTER="false"      # Nginx metrics
+export ENABLE_REDIS_EXPORTER="false"      # Redis metrics
+export ENABLE_POSTGRES_EXPORTER="false"   # PostgreSQL metrics
+export ENABLE_MYSQL_EXPORTER="false"      # MySQL metrics
+export ENABLE_BLACKBOX_EXPORTER="false"   # Endpoint probing
+```
+
+### Metrics Configuration
+
+```bash
+export PROMETHEUS_SCRAPE_INTERVAL="60"    # Seconds between scrapes
+export PROMETHEUS_SCRAPE_TIMEOUT="10"     # Scrape timeout
+export PROMETHEUS_METRICS_PORT="9090"     # Metrics endpoint port
+export PROMETHEUS_METRICS_PATH="/metrics" # Metrics endpoint path
+export METRICS_NAMESPACE="container_monitoring"  # OCI Monitoring namespace
+```
+
+### Logging Configuration
+
+```bash
+export ENABLE_LOGGING="true"              # Enable OCI Logging
+export LOG_GROUP_NAME="container-instance-logs"
+export LOG_RETENTION_DAYS="30"
+export ENABLE_AUDIT_LOGS="true"
 ```
 
 ## 🔍 Troubleshooting
 
-### Exporters Not Scraping
+### Management Agent Not Registered
 
+**Check container logs:**
 ```bash
-# Check cAdvisor is running
-oci container-instances container list --container-instance-id <instance-id>
-
-# Test cAdvisor metrics endpoint
-curl http://<container-ip>:8080/metrics
-
-# Test Node Exporter metrics endpoint
-curl http://<container-ip>:9100/metrics
+oci container-instances container list \
+  --container-instance-id <instance-id> \
+  --query 'data[?contains("display-name", `mgmt-agent`)].id' \
+  --raw-output | head -1 | xargs -I {} \
+  oci container-instances container retrieve-logs \
+  --container-id {}
 ```
 
-### Prometheus Not Collecting
+**Common issues:**
+1. **Install key expired** - Create new install key
+2. **IAM policies missing** - Verify dynamic group and policies
+3. **Network connectivity** - Check NSG and subnet route tables
+4. **Agent already registered** - Agent persists in volume, container restart uses existing registration
 
+### No Metrics in OCI Monitoring
+
+**Verify Management Agent status:**
 ```bash
-# SSH to Monitoring VM
-ssh opc@<vm-ip>
-
-# Check Prometheus status
-sudo systemctl status prometheus
-
-# View Prometheus targets
-curl http://localhost:9090/api/v1/targets
-
-# Check Prometheus config
-cat /etc/prometheus/prometheus.yml
+# In Management Agent sidecar container logs, look for:
+✓ Management Agent registered successfully with OCI
+✓ Management Agent started successfully
+✓ Agent is now collecting and forwarding metrics
 ```
 
-### Grafana Not Showing Data
-
+**Check Prometheus endpoint:**
 ```bash
-# Check Grafana data source
-curl http://admin:<password>@localhost:3000/api/datasources
-
-# Verify Prometheus is reachable
-curl http://localhost:9090/api/v1/query?query=up
-
-# Restart Grafana
-sudo systemctl restart grafana-server
+# From within container instance:
+curl http://localhost:9090/metrics
 ```
 
-See **[Troubleshooting Guide](./docs/TROUBLESHOOTING.md)** for more solutions.
+**Verify namespace:**
+- Metrics appear in namespace: `container_monitoring`
+- NOT in `oci_prometheus_metrics` (that's the plugin namespace)
 
-## 🌟 Key Advantages
+### Logs Not Appearing in OCI Logging
 
-### vs Native OCI Metrics Only
+**Check Log Forwarder status:**
+```bash
+# View log forwarder container logs
+oci container-instances container list \
+  --container-instance-id <instance-id> \
+  --query 'data[?contains("display-name", `log-forwarder`)].id' \
+  --raw-output | head -1 | xargs -I {} \
+  oci container-instances container retrieve-logs \
+  --container-id {}
+```
 
-| Feature | Native Only | + Prometheus |
-|---------|-------------|--------------|
-| Per-container metrics | ❌ | ✅ |
-| Host-level metrics | ❌ | ✅ |
-| Custom dashboards | ❌ | ✅ |
-| Historical data | 90 days | Unlimited |
-| Scrape interval | Varies | 15 seconds |
-| Visualization | OCI Console | Grafana + OCI |
+**Verify log OCID:**
+```bash
+# Check that LOG_OCID environment variable is set in log forwarder
+# It should match the application_log_ocid from logging module
+```
 
-### vs Management Agent Sidecar
+### NSG Blocking Access
 
-- ✅ **Actually works** (agent sidecars fail in containers)
-- ✅ **Industry standard** (Prometheus + Grafana)
-- ✅ **More metrics** (cAdvisor + Node Exporter)
-- ✅ **Better visualization** (Grafana dashboards)
-- ✅ **Scalable** (single VM monitors all containers)
+**Check your current IP:**
+```bash
+curl https://ifconfig.me/ip
+```
 
-## 📞 Support
+**Verify NSG rules:**
+```bash
+oci network nsg-security-rule list \
+  --network-security-group-id <nsg-id> \
+  --query 'data[*].{"Direction":"direction","Source":"source","Port":"tcp-options.destination-port-range"}' \
+  --output table
+```
 
-For issues or questions:
+**Update NSG if IP changed:**
+```bash
+# Re-run terraform to update NSG with new IP
+cd terraform
+terraform apply -auto-approve
+```
 
-1. Check **[Troubleshooting Guide](./docs/TROUBLESHOOTING.md)**
-2. Review **[Prometheus Monitoring Guide](./docs/PROMETHEUS_MONITORING_GUIDE.md)**
-3. Check Prometheus/Grafana logs
-4. Verify NSG rules and networking
+## 📈 Monitoring Best Practices
 
-## 📝 License
+### Metric Collection
+1. **Use appropriate scrape intervals**: Balance between data resolution and resource usage
+2. **Configure retention**: Set appropriate retention in OCI Monitoring
+3. **Use labels effectively**: Leverage container, instance, and custom labels
 
-This project is provided as-is for use within your organization.
+### Log Management
+1. **Set retention policies**: Configure log retention based on compliance needs
+2. **Use log levels**: Structure logs with severity levels (INFO, WARN, ERROR)
+3. **Monitor log volume**: Watch for unusual log volume spikes
 
-## 📅 Version
+### Resource Allocation
+1. **Sidecar sizing**: Allocate appropriate CPU/memory to sidecars
+2. **Monitor sidecar health**: Check sidecar container status regularly
+3. **Scale appropriately**: Increase resources if sidecars are CPU/memory constrained
 
-- **Version**: 2.0.0 (Prometheus-based)
-- **Last Updated**: 2025
-- **Stack**: Prometheus + Grafana + OCI Management Agent
+### Security
+1. **Rotate install keys**: Periodically rotate Management Agent install keys
+2. **Review IAM policies**: Ensure least privilege access
+3. **Monitor NSG rules**: Keep allowed IP addresses up to date
+4. **Use Resource Principal**: Avoid hardcoded credentials
+
+## 🛠️ Advanced Topics
+
+### Custom Metrics
+
+Add custom metrics to your application:
+
+```python
+from prometheus_client import Counter, Histogram, generate_latest
+
+# Define metrics
+request_count = Counter('app_requests_total', 'Total requests', ['method', 'endpoint'])
+request_duration = Histogram('app_request_duration_seconds', 'Request duration')
+
+# Instrument your code
+@request_duration.time()
+def handle_request():
+    request_count.labels(method='GET', endpoint='/api').inc()
+    # Your code here
+
+# Expose metrics endpoint
+@app.route('/metrics')
+def metrics():
+    return generate_latest()
+```
+
+### Multi-Instance Deployment
+
+Scale container instances:
+
+```bash
+# In config/oci-monitoring.env
+export CONTAINER_COUNT="3"  # Deploy 3 replicas
+```
+
+### Custom Dashboards
+
+Create custom Grafana dashboards by importing JSON from OCI Monitoring:
+
+1. Export metrics from OCI Monitoring
+2. Convert to Grafana format
+3. Import into Grafana instance
+
+## 📚 Additional Resources
+
+### OCI Documentation
+- [Container Instances](https://docs.oracle.com/en-us/iaas/Content/container-instances/home.htm)
+- [Management Agents](https://docs.oracle.com/en-us/iaas/management-agents/index.html)
+- [OCI Monitoring](https://docs.oracle.com/en-us/iaas/Content/Monitoring/home.htm)
+- [OCI Logging](https://docs.oracle.com/en-us/iaas/Content/Logging/home.htm)
+
+### Prometheus
+- [Prometheus Documentation](https://prometheus.io/docs/)
+- [PromQL Query Language](https://prometheus.io/docs/prometheus/latest/querying/basics/)
+- [Exporters and Integrations](https://prometheus.io/docs/instrumenting/exporters/)
+
+### Related Projects
+- [OCI Management Agent Quickstart](https://github.com/oracle-quickstart/oci-management-agent)
+- [Prometheus Community](https://github.com/prometheus-community)
+
+## 🤝 Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License - see LICENSE file for details.
+
+## 🆘 Support
+
+For issues and questions:
+- Open an issue on GitHub: https://github.com/your-username/oci-container-monitoring-demo/issues
+- Check OCI documentation
+- Review troubleshooting section above
+
+## 🎯 Roadmap
+
+Future enhancements planned:
+- [ ] Grafana deployment option
+- [ ] Multi-region deployment
+- [ ] Alert manager integration
+- [ ] Custom metric dashboards
+- [ ] Automated backup/restore
+- [ ] HA configuration examples
+
+## 🔖 Version History
+
+### v1.0.0 (Latest)
+- ✅ Sidecar-based architecture for all components
+- ✅ Automatic Management Agent registration
+- ✅ Log forwarding with OCI Logging integration
+- ✅ NSG with automatic IP detection
+- ✅ Auto-updating build script for .env file
+- ✅ Four production-ready container images
+- ✅ Complete Terraform automation
+- ✅ Comprehensive documentation
 
 ---
 
-**Ready to deploy?** Start with the [Quick Start](#-quick-start) guide above!
+**Built with ❤️ for OCI Container Instances**
+
+Repository: https://github.com/your-username/oci-container-monitoring-demo

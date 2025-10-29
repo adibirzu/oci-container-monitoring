@@ -9,7 +9,7 @@ LABEL maintainer="DevSecOps Team"
 LABEL description="OCI Management Agent Sidecar with Prometheus Plugin"
 LABEL version="1.0.0"
 
-# Install required packages
+# Install required packages for Management Agent
 RUN yum update -y && \
     yum install -y \
     java-11-openjdk-headless \
@@ -18,6 +18,9 @@ RUN yum update -y && \
     unzip \
     procps-ng \
     net-tools \
+    openssl \
+    sudo \
+    hostname \
     && yum clean all \
     && rm -rf /var/cache/yum
 

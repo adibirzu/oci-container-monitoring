@@ -17,17 +17,18 @@ resource "oci_logging_log_group" "container_log_group" {
 
 #######################################
 # Container Application Logs (stdout/stderr)
+# Using CUSTOM log type for Log Forwarder sidecar integration
 #######################################
 resource "oci_logging_log" "container_application_log" {
   display_name = "${var.log_group_name}-application"
   log_group_id = oci_logging_log_group.container_log_group.id
-  log_type     = "SERVICE"
+  log_type     = "CUSTOM"
 
   configuration {
     source {
-      category    = "application"
+      category    = "custom"
       resource    = var.container_instance_id
-      service     = "computecontainerinstance"
+      service     = "containerinstances"
       source_type = "OCISERVICE"
     }
 
@@ -45,17 +46,18 @@ resource "oci_logging_log" "container_application_log" {
 
 #######################################
 # Container System Logs
+# Using CUSTOM log type for Log Forwarder sidecar integration
 #######################################
 resource "oci_logging_log" "container_system_log" {
   display_name = "${var.log_group_name}-system"
   log_group_id = oci_logging_log_group.container_log_group.id
-  log_type     = "SERVICE"
+  log_type     = "CUSTOM"
 
   configuration {
     source {
-      category    = "system"
+      category    = "custom"
       resource    = var.container_instance_id
-      service     = "computecontainerinstance"
+      service     = "containerinstances"
       source_type = "OCISERVICE"
     }
 
@@ -73,18 +75,19 @@ resource "oci_logging_log" "container_system_log" {
 
 #######################################
 # Audit Logs (Optional)
+# Using CUSTOM log type for sidecar integration
 #######################################
 resource "oci_logging_log" "container_audit_log" {
   count        = var.enable_audit_logs ? 1 : 0
   display_name = "${var.log_group_name}-audit"
   log_group_id = oci_logging_log_group.container_log_group.id
-  log_type     = "SERVICE"
+  log_type     = "CUSTOM"
 
   configuration {
     source {
-      category    = "audit"
+      category    = "custom"
       resource    = var.compartment_ocid
-      service     = "computecontainerinstance"
+      service     = "containerinstances"
       source_type = "OCISERVICE"
     }
 
@@ -113,7 +116,7 @@ resource "oci_logging_log" "prometheus_metrics_log" {
     source {
       category    = "custom"
       resource    = var.container_instance_id
-      service     = "computecontainerinstance"
+      service     = "containerinstances"
       source_type = "OCISERVICE"
     }
 

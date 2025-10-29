@@ -84,6 +84,24 @@ output "memory_alarm_id" {
 }
 
 #######################################
+# Network Security Group Outputs
+#######################################
+output "detected_ip_address" {
+  description = "Automatically detected public IP address used for NSG rules"
+  value       = local.my_ip_cidr
+}
+
+output "container_nsg_id" {
+  description = "Container NSG OCID"
+  value       = module.nsg.container_nsg_id
+}
+
+output "container_nsg_name" {
+  description = "Container NSG Name"
+  value       = module.nsg.container_nsg_name
+}
+
+#######################################
 # Console URLs
 #######################################
 output "container_instance_console_url" {
@@ -114,14 +132,26 @@ output "deployment_summary" {
       private_ip = module.container_instance.container_instance_private_ip
       public_ip  = module.container_instance.container_instance_public_ip
     }
+    network_security = {
+      detected_ip   = local.my_ip_cidr
+      nsg_id        = module.nsg.container_nsg_id
+      nsg_name      = module.nsg.container_nsg_name
+      allowed_ports = "80, 443, 8080, 9090, 9100, 9113, 9115, 9104, 9121, 9187"
+    }
     logging = var.enable_logging ? {
-      log_group_id   = module.logging[0].log_group_id
+      log_group_id    = module.logging[0].log_group_id
       application_log = module.logging[0].application_log_id
-      system_log     = module.logging[0].system_log_id
+      system_log      = module.logging[0].system_log_id
     } : null
-    management_agent = var.enable_management_agent ? {
-      install_key_id    = module.management_agent[0].install_key_id
-      config_files_path = "${path.root}/output"
+    management_agent = (var.enable_management_agent || var.enable_management_agent_sidecar) ? {
+      install_key_id            = module.management_agent[0].install_key_id
+      config_files_path         = "${path.root}/output"
+      sidecar_architecture      = var.enable_management_agent_sidecar
+      prometheus_sidecar        = var.enable_prometheus_sidecar
+      log_forwarder_sidecar     = var.enable_log_forwarder_sidecar
+      mgmt_agent_image          = var.enable_management_agent_sidecar ? var.mgmt_agent_sidecar_image : null
+      prometheus_image          = var.enable_prometheus_sidecar ? var.prometheus_sidecar_image : null
+      log_forwarder_image       = var.enable_log_forwarder_sidecar ? var.log_forwarder_sidecar_image : null
     } : null
     alarms = var.enable_alarms ? {
       cpu_alarm    = oci_monitoring_alarm.cpu_alarm[0].id

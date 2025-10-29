@@ -3,12 +3,22 @@
 # Main Terraform Configuration
 #######################################
 
+#######################################
+# Automatic IP Detection for NSG
+#######################################
+data "http" "my_ip" {
+  url = "https://ifconfig.me/ip"
+}
+
 locals {
   # Container environment variables (already a map)
   container_env_map = var.container_env_vars
 
   # NSG OCIDs (already a list)
   nsg_list = var.nsg_ocids
+
+  # Detected public IP for NSG rules
+  my_ip_cidr = "${chomp(data.http.my_ip.response_body)}/32"
 
   # Common tags
   common_tags = merge(
@@ -39,6 +49,26 @@ module "iam" {
 }
 
 #######################################
+# Network Security Group
+# Automatically allows access from the user's detected IP
+#######################################
+module "nsg" {
+  source = "./modules/nsg"
+
+  compartment_ocid     = var.compartment_ocid
+  vcn_ocid             = var.vcn_ocid
+  resource_prefix      = var.container_instance_name
+  allowed_cidr         = local.my_ip_cidr
+  create_container_nsg = true
+  create_vm_nsg        = false
+
+  freeform_tags = local.common_tags
+  defined_tags  = var.defined_tags
+
+  depends_on = [module.iam]
+}
+
+#######################################
 # Container Instance Deployment
 #######################################
 module "container_instance" {
@@ -57,7 +87,7 @@ module "container_instance" {
   availability_domain     = var.availability_domain
   subnet_ocid             = var.subnet_ocid
   assign_public_ip        = var.assign_public_ip
-  nsg_ocids               = local.nsg_list
+  nsg_ocids               = concat([module.nsg.container_nsg_id], local.nsg_list)
   ocir_username           = var.ocir_username
   ocir_auth_token         = var.ocir_auth_token
   ocir_endpoint           = "${var.region}.ocir.io"
@@ -82,6 +112,11 @@ module "container_instance" {
   mgmt_agent_sidecar_ocpus          = var.mgmt_agent_sidecar_ocpus
   prometheus_sidecar_memory_gb      = var.prometheus_sidecar_memory_gb
   prometheus_sidecar_ocpus          = var.prometheus_sidecar_ocpus
+  enable_log_forwarder_sidecar      = var.enable_log_forwarder_sidecar
+  log_forwarder_sidecar_image       = var.log_forwarder_sidecar_image
+  log_forwarder_sidecar_memory_gb   = var.log_forwarder_sidecar_memory_gb
+  log_forwarder_sidecar_ocpus       = var.log_forwarder_sidecar_ocpus
+  log_ocid                          = ""  # Will be configured after logging module is created
 
   # Prometheus Exporters Configuration
   enable_prometheus_exporters = var.enable_prometheus_exporters
@@ -94,7 +129,7 @@ module "container_instance" {
   freeform_tags = local.common_tags
   defined_tags  = var.defined_tags
 
-  depends_on = [module.iam, module.management_agent]
+  depends_on = [module.iam, module.nsg, module.management_agent]
 }
 
 #######################################

@@ -312,3 +312,33 @@ variable "prometheus_sidecar_ocpus" {
   type        = number
   default     = 0.25
 }
+
+variable "enable_log_forwarder_sidecar" {
+  description = "Enable Log Forwarder as sidecar container for forwarding logs to OCI Logging"
+  type        = bool
+  default     = false
+}
+
+variable "log_forwarder_sidecar_image" {
+  description = "Log Forwarder sidecar container image URL (custom image from OCIR)"
+  type        = string
+  default     = ""
+}
+
+variable "log_forwarder_sidecar_memory_gb" {
+  description = "Memory allocation for Log Forwarder sidecar in GB"
+  type        = number
+  default     = 0.5
+}
+
+variable "log_forwarder_sidecar_ocpus" {
+  description = "OCPU allocation for Log Forwarder sidecar"
+  type        = number
+  default     = 0.125
+}
+
+variable "log_ocid" {
+  description = "OCI Logging Log OCID for log forwarder to send logs to"
+  type        = string
+  default     = ""
+}

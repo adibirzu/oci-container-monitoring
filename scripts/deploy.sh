@@ -254,16 +254,20 @@ prometheus_metrics_path     = "${PROMETHEUS_METRICS_PATH}"
 enable_shared_volumes             = ${ENABLE_SHARED_VOLUMES:-false}
 enable_management_agent_sidecar   = ${ENABLE_MANAGEMENT_AGENT_SIDECAR:-false}
 enable_prometheus_sidecar         = ${ENABLE_PROMETHEUS_SIDECAR:-false}
+enable_log_forwarder_sidecar      = ${ENABLE_LOG_FORWARDER_SIDECAR:-false}
 
 # Sidecar Container Images
-mgmt_agent_sidecar_image    = "${MGMT_AGENT_SIDECAR_IMAGE:-}"
-prometheus_sidecar_image    = "${PROMETHEUS_SIDECAR_IMAGE:-}"
+mgmt_agent_sidecar_image       = "${MGMT_AGENT_SIDECAR_IMAGE:-}"
+prometheus_sidecar_image       = "${PROMETHEUS_SIDECAR_IMAGE:-}"
+log_forwarder_sidecar_image    = "${LOG_FORWARDER_SIDECAR_IMAGE:-}"
 
 # Sidecar Resource Allocation
-mgmt_agent_sidecar_memory_gb = ${MGMT_AGENT_SIDECAR_MEMORY_GB:-1.0}
-mgmt_agent_sidecar_ocpus     = ${MGMT_AGENT_SIDECAR_OCPUS:-0.25}
-prometheus_sidecar_memory_gb = ${PROMETHEUS_SIDECAR_MEMORY_GB:-1.0}
-prometheus_sidecar_ocpus     = ${PROMETHEUS_SIDECAR_OCPUS:-0.25}
+mgmt_agent_sidecar_memory_gb    = ${MGMT_AGENT_SIDECAR_MEMORY_GB:-1.0}
+mgmt_agent_sidecar_ocpus        = ${MGMT_AGENT_SIDECAR_OCPUS:-0.25}
+prometheus_sidecar_memory_gb    = ${PROMETHEUS_SIDECAR_MEMORY_GB:-1.0}
+prometheus_sidecar_ocpus        = ${PROMETHEUS_SIDECAR_OCPUS:-0.25}
+log_forwarder_sidecar_memory_gb = ${LOG_FORWARDER_SIDECAR_MEMORY_GB:-0.5}
+log_forwarder_sidecar_ocpus     = ${LOG_FORWARDER_SIDECAR_OCPUS:-0.125}
 
 # Prometheus Exporters Configuration
 enable_prometheus_exporters  = ${ENABLE_PROMETHEUS_EXPORTERS:-true}

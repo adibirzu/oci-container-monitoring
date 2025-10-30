@@ -270,6 +270,46 @@ variable "log_forwarder_sidecar_ocpus" {
 }
 
 #######################################
+# Grafana Sidecar Variables
+#######################################
+variable "enable_grafana_sidecar" {
+  description = "Enable Grafana as sidecar container for metrics visualization and OCI Logs querying"
+  type        = bool
+  default     = false
+}
+
+variable "grafana_sidecar_image" {
+  description = "Grafana sidecar container image URL (custom image with OCI Logs plugin from OCIR)"
+  type        = string
+  default     = "fra.ocir.io/frxfz3gch4zb/oci-monitoring/grafana-sidecar:1.0.0"
+}
+
+variable "grafana_sidecar_memory_gb" {
+  description = "Memory allocation for Grafana sidecar in GB"
+  type        = number
+  default     = 0.5
+}
+
+variable "grafana_sidecar_ocpus" {
+  description = "OCPU allocation for Grafana sidecar"
+  type        = number
+  default     = 0.25
+}
+
+variable "grafana_admin_user" {
+  description = "Grafana admin username"
+  type        = string
+  default     = "admin"
+}
+
+variable "grafana_admin_password" {
+  description = "Grafana admin password"
+  type        = string
+  default     = "admin"
+  sensitive   = true
+}
+
+#######################################
 # Prometheus Exporters Variables
 #######################################
 variable "enable_prometheus_exporters" {

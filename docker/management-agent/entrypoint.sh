@@ -20,14 +20,16 @@ if [ -z "$MGMT_AGENT_INSTALL_KEY" ]; then
     exit 1
 fi
 
-# Download Management Agent if not already present
+# Download Management Agent RPM from Pre-Authenticated Request (PAR) if not already present
+# NOTE: The RPM must be pre-downloaded and uploaded to OCI Object Storage with a PAR URL
+# See documentation for instructions on obtaining and uploading the Management Agent RPM
 if [ ! -f "/tmp/oracle.mgmt_agent.rpm" ]; then
-    echo "Downloading Management Agent..."
-    echo "URL: https://objectstorage.${OCI_REGION}.oraclecloud.com/n/idtskf8cjzhp/b/installer/o/Linux/latest/oracle.mgmt_agent.rpm"
+    echo "Downloading Management Agent from PAR..."
+    echo "URL: https://frxfz3gch4zb.objectstorage.${OCI_REGION}.oci.customer-oci.com/p/yhfyLtJRVhgcLikaY2LYqvpTg6tMb6HfjrWGWl8ZtZgOBoz0SVJXXjpZzIjw2MkH/n/frxfz3gch4zb/b/Observability/o/oracle.mgmt_agent.230821.1905.Linux-x86_64.rpm"
 
     # Download with progress and timeout
     wget --verbose --timeout=300 --tries=3 \
-        "https://objectstorage.${OCI_REGION}.oraclecloud.com/n/idtskf8cjzhp/b/installer/o/Linux/latest/oracle.mgmt_agent.rpm" \
+        "https://frxfz3gch4zb.objectstorage.${OCI_REGION}.oci.customer-oci.com/p/yhfyLtJRVhgcLikaY2LYqvpTg6tMb6HfjrWGWl8ZtZgOBoz0SVJXXjpZzIjw2MkH/n/frxfz3gch4zb/b/Observability/o/oracle.mgmt_agent.230821.1905.Linux-x86_64.rpm" \
         -O /tmp/oracle.mgmt_agent.rpm 2>&1 | tee /tmp/download.log
 
     DOWNLOAD_STATUS=$?
@@ -38,9 +40,12 @@ if [ ! -f "/tmp/oracle.mgmt_agent.rpm" ]; then
         echo ""
         echo "Possible causes:"
         echo "  1. Network connectivity issues"
-        echo "  2. Invalid region: ${OCI_REGION}"
-        echo "  3. Download URL changed or moved"
-        echo "  4. Firewall blocking outbound connections"
+        echo "  2. Invalid PAR URL or expired PAR"
+        echo "  3. Firewall blocking outbound connections"
+        echo ""
+        echo "IMPORTANT: You must download the Management Agent RPM and upload it to OCI Object Storage"
+        echo "Then create a Pre-Authenticated Request (PAR) and update the download URL in this script."
+        echo "See MANAGEMENT_AGENT_SETUP.md for detailed instructions."
         exit 1
     fi
 
@@ -55,29 +60,85 @@ if [ ! -f "/tmp/oracle.mgmt_agent.rpm" ]; then
     echo "✓ Management Agent downloaded successfully (${FILE_SIZE} bytes)"
 fi
 
-# Install Management Agent if not already installed
+# Extract Management Agent RPM contents (bypassing systemd check)
 if [ ! -d "/opt/oracle/mgmt_agent/agent_inst" ]; then
-    echo "Installing Management Agent RPM..."
-    echo "Running: rpm -ivh /tmp/oracle.mgmt_agent.rpm"
+    echo "Extracting Management Agent from RPM (bypassing systemd requirement)..."
 
-    rpm -ivh /tmp/oracle.mgmt_agent.rpm 2>&1 | tee /tmp/rpm-install.log
-    RPM_STATUS=$?
+    # Install rpm2cpio if not available
+    if ! command -v rpm2cpio &> /dev/null; then
+        echo "Installing rpm2cpio..."
+        yum install -y rpm2cpio 2>&1 | tee /tmp/rpm2cpio-install.log
+    fi
 
-    if [ $RPM_STATUS -ne 0 ]; then
-        echo "ERROR: Failed to install Management Agent RPM (exit code: $RPM_STATUS)"
-        echo "RPM installation log:"
-        cat /tmp/rpm-install.log
+    # Create extraction directory
+    mkdir -p /opt/oracle/mgmt_agent
+    cd /opt/oracle/mgmt_agent
+
+    # Extract RPM contents without running pre/post install scripts
+    echo "Extracting RPM contents using rpm2cpio..."
+    rpm2cpio /tmp/oracle.mgmt_agent.rpm | cpio -idmv 2>&1 | tee /tmp/rpm-extract.log
+    EXTRACT_STATUS=$?
+
+    if [ $EXTRACT_STATUS -ne 0 ]; then
+        echo "ERROR: Failed to extract Management Agent RPM (exit code: $EXTRACT_STATUS)"
+        echo "Extract log:"
+        cat /tmp/rpm-extract.log
         exit 1
     fi
 
-    # Verify installation
-    if [ -d "/opt/oracle/mgmt_agent/agent_inst" ]; then
-        echo "✓ Management Agent RPM installed successfully"
-        ls -la /opt/oracle/mgmt_agent/agent_inst/ | head -20
+    # Move extracted files to proper location
+    if [ -d "opt/oracle/mgmt_agent" ]; then
+        echo "Moving extracted files to /opt/oracle/mgmt_agent..."
+        cp -r opt/oracle/mgmt_agent/* /opt/oracle/mgmt_agent/
+        rm -rf opt
+    fi
+
+    # Check if we got a ZIP file that needs to be extracted
+    if [ -f "/opt/oracle/mgmt_agent/zip/oracle.mgmt_agent-230821.1905.linux.zip" ]; then
+        echo "Found ZIP file inside RPM - extracting agent using Oracle extractor..."
+        cd /opt/oracle/mgmt_agent
+
+        # Use the Oracle-provided Java extractor (proper way to unpack agent)
+        # Usage: java -jar unpack.jar <path-to>/oracle.mgmt_agent-*.zip
+        java -jar zip/zip_extractor/agent-unpack-1.0.9059.jar \
+            zip/oracle.mgmt_agent-230821.1905.linux.zip 2>&1 | tee /tmp/zip-extract.log
+        ZIP_STATUS=$?
+
+        if [ $ZIP_STATUS -ne 0 ]; then
+            echo "ERROR: Failed to extract ZIP file (exit code: $ZIP_STATUS)"
+            cat /tmp/zip-extract.log
+            exit 1
+        fi
+
+        echo "✓ ZIP file extracted successfully using Oracle extractor"
+        echo "Checking extraction results..."
+        echo "Contents of /opt/oracle/mgmt_agent:"
+        ls -la /opt/oracle/mgmt_agent/ 2>&1 || true
+        echo "Looking for version directories:"
+        find /opt/oracle/mgmt_agent -maxdepth 2 -type d -name "230*" -ls 2>&1 || true
+        echo "Looking for agent directories:"
+        find /opt/oracle/mgmt_agent -maxdepth 2 -type d -name "agent*" -ls 2>&1 || true
+    fi
+
+    # Verify extraction - check for setup.sh in version directory
+    if [ -f "/opt/oracle/mgmt_agent/230821.1905/bin/setup.sh" ]; then
+        rm -rf /opt/oracle/mgmt_agent/zip  # Clean up ZIP directory after successful verification
+        echo "✓ Management Agent extracted successfully"
+        ls -la /opt/oracle/mgmt_agent/230821.1905/bin/ | head -20
     else
-        echo "ERROR: Installation directory not created"
+        echo "ERROR: setup.sh binary not found after extraction"
+        echo "Directory contents:"
+        ls -la /opt/oracle/mgmt_agent/
+        echo "Looking for setup.sh:"
+        find /opt/oracle/mgmt_agent -name "setup.sh" -ls
+        echo "Looking for bin directories:"
+        find /opt/oracle/mgmt_agent -name "bin" -type d -ls
         exit 1
     fi
+
+    # Set proper permissions on version bin directory
+    chmod -R 755 /opt/oracle/mgmt_agent/230821.1905/bin
+    chmod +x /opt/oracle/mgmt_agent/230821.1905/bin/*
 fi
 
 # Generate secure wallet password (minimum 8 chars with complexity requirements)
@@ -109,7 +170,7 @@ if [ ! -f "/opt/oracle/mgmt_agent/agent_inst/config/mgmt_agent.properties" ]; th
     echo "Install Key: ${MGMT_AGENT_INSTALL_KEY:0:20}...${MGMT_AGENT_INSTALL_KEY: -10}"
     echo "Agent Name: $(hostname)-mgmt-agent"
 
-    /opt/oracle/mgmt_agent/agent_inst/bin/setup.sh opts=/tmp/mgmt_agent_input.rsp 2>&1 | tee /tmp/setup.log
+    /opt/oracle/mgmt_agent/230821.1905/bin/setup.sh opts=/tmp/mgmt_agent_input.rsp 2>&1 | tee /tmp/setup.log
     SETUP_STATUS=$?
 
     if [ $SETUP_STATUS -ne 0 ]; then
@@ -167,7 +228,7 @@ fi
 
 echo "✓ Prometheus plugin configured"
 
-# Cleanup sensitive data
+# Cleanup sensitive data and temporary files
 rm -f /tmp/mgmt_agent_input.rsp
 rm -f /tmp/oracle.mgmt_agent.rpm
 

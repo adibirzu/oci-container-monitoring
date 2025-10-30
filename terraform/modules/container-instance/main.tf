@@ -3,6 +3,14 @@
 # Creates and configures Container Instances with monitoring
 #######################################
 
+# Random password for Management Agent credential wallet
+resource "random_password" "mgmt_agent_wallet_password" {
+  count   = var.enable_management_agent_sidecar ? 1 : 0
+  length  = 16
+  special = true
+  override_special = "!@#$%^&*"
+}
+
 # Get availability domain
 data "oci_identity_availability_domains" "ads" {
   compartment_id = var.tenancy_ocid
@@ -391,7 +399,7 @@ resource "oci_container_instances_container_instance" "main" {
   #######################################
 
   # Management Agent Sidecar Container (New Architecture)
-  # Uses custom container image with auto-installation script
+  # Uses official Oracle Management Agent container image
   # Integrates with OCI Monitoring via Prometheus plugin
   dynamic "containers" {
     for_each = var.enable_management_agent_sidecar && var.mgmt_agent_sidecar_image != "" ? [1] : []
@@ -401,11 +409,17 @@ resource "oci_container_instances_container_instance" "main" {
 
       # Environment variables for Management Agent configuration
       environment_variables = {
-        MGMT_AGENT_INSTALL_KEY     = var.mgmt_agent_install_key
-        OCI_REGION                  = var.region
-        PROMETHEUS_SCRAPE_INTERVAL  = "${var.prometheus_scrape_interval}s"
-        PROMETHEUS_SCRAPE_TIMEOUT   = "${var.prometheus_scrape_timeout}s"
-        METRICS_NAMESPACE           = var.metrics_namespace
+        # Oracle official image uses input.rsp file instead of environment variables
+        # OCI_REGION is still used for Resource Principal authentication
+        OCI_REGION = var.region
+      }
+
+      # Mount input.rsp configuration directory
+      # Oracle Management Agent expects input.rsp at /opt/oracle/mgmtagent_secret/input.rsp
+      volume_mounts {
+        mount_path   = "/opt/oracle/mgmtagent_secret"
+        volume_name  = "mgmt-agent-config"
+        is_read_only = true
       }
 
       # Volume mounts for shared data
@@ -531,6 +545,41 @@ resource "oci_container_instances_container_instance" "main" {
     }
   }
 
+  # Grafana Sidecar Container  # Provides visualization for Prometheus metrics and OCI Logs
+  # Includes OCI Logs datasource plugin for unified observability dashboard
+  dynamic "containers" {
+    for_each = var.enable_grafana_sidecar && var.grafana_sidecar_image != "" ? [1] : []
+    content {
+      display_name = "${var.container_instance_name}-grafana-sidecar"
+      image_url    = var.grafana_sidecar_image
+
+      # Environment variables for Grafana configuration
+      environment_variables = {
+        GF_SECURITY_ADMIN_USER     = var.grafana_admin_user
+        GF_SECURITY_ADMIN_PASSWORD = var.grafana_admin_password
+        GF_SERVER_HTTP_PORT        = "3000"
+        OCI_TENANCY_OCID           = var.tenancy_ocid
+        OCI_REGION                 = var.region
+      }
+
+      # Resource allocation for Grafana sidecar
+      resource_config {
+        memory_limit_in_gbs = var.grafana_sidecar_memory_gb
+        vcpus_limit         = var.grafana_sidecar_ocpus
+      }
+
+      # Health check for Grafana
+      health_checks {
+        health_check_type = "HTTP"
+        port              = 3000
+        path              = "/api/health"
+        interval_in_seconds = 30
+        timeout_in_seconds  = 10
+        failure_threshold   = 3
+      }
+    }
+  }
+
   # Management Agent Sidecar Container (Legacy - for backward compatibility)
   # NOTE: This does NOT work in Container Instances (containers lack systemd)
   # Use Monitoring VM with Management Agent instead
@@ -629,6 +678,27 @@ resource "oci_container_instances_container_instance" "main" {
     content {
       name        = "logs-volume"
       volume_type = "EMPTYDIR"
+    }
+  }
+
+  # Management Agent configuration volume - contains input.rsp file
+  # Mounted at /opt/oracle/mgmtagent_secret in the container
+  dynamic "volumes" {
+    for_each = var.enable_management_agent_sidecar ? [1] : []
+    content {
+      name        = "mgmt-agent-config"
+      volume_type = "CONFIGFILE"
+
+      configs {
+        file_name = "input.rsp"
+        data      = base64encode(<<-EOF
+ManagementAgentInstallKey=${var.mgmt_agent_install_key}
+AgentDisplayName=${var.container_instance_name}-mgmt-agent
+CredentialWalletPassword=${random_password.mgmt_agent_wallet_password[0].result}
+Service.plugin.prometheus.download=true
+EOF
+        )
+      }
     }
   }
 

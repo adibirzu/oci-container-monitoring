@@ -892,5 +892,3 @@ Future enhancements planned:
 ---
 
 **Built with ❤️ for OCI Container Instances**
-
-Repository: https://github.com/your-username/oci-container-monitoring-demo

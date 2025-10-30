@@ -116,7 +116,7 @@ module "container_instance" {
   log_forwarder_sidecar_image       = var.log_forwarder_sidecar_image
   log_forwarder_sidecar_memory_gb   = var.log_forwarder_sidecar_memory_gb
   log_forwarder_sidecar_ocpus       = var.log_forwarder_sidecar_ocpus
-  log_ocid                          = var.enable_logging && var.enable_log_forwarder_sidecar ? "ocid1.log.oc1.eu-frankfurt-1.amaaaaaattkvkkiaw4qh4kkcmr2pgs3fevxlv4pvi3vas2xc3vkddkddoica" : ""
+  log_ocid                          = var.enable_logging && var.enable_log_forwarder_sidecar ? "ocid1.log.oc1.eu-frankfurt-1.amaaaaaattkvkkiaw7bhvdxvtgxy7hoju6vdmodykcfzhoqv3zu7n63oiqya" : ""
 
   # Grafana Sidecar Configuration (New)
   enable_grafana_sidecar            = var.enable_grafana_sidecar
@@ -150,7 +150,6 @@ module "logging" {
 
   compartment_ocid        = var.compartment_ocid
   log_group_name          = var.log_group_name
-  container_instance_id   = module.container_instance.container_instance_id
   enable_logging          = var.enable_logging
   enable_audit_logs       = var.enable_audit_logs
   enable_management_agent = var.enable_management_agent
@@ -158,8 +157,6 @@ module "logging" {
 
   freeform_tags = local.common_tags
   defined_tags  = var.defined_tags
-
-  depends_on = [module.container_instance]
 }
 
 #######################################

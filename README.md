@@ -13,37 +13,40 @@ This demo provides comprehensive container monitoring using a modern sidecar arc
 - **📦 One-Command Deployment**: Fully automated infrastructure provisioning
 - **🐳 Multi-Exporter Support**: cAdvisor, Node Exporter, and application-specific exporters
 
-## 🏗️ Sidecar Architecture
+## 🏗️ Sidecar Architecture (7 Containers)
 
 ```
-┌───────────────────────────────────────────────────────────────────┐
-│              OCI Container Instance (Pod-like)                    │
-│                                                                   │
-│  ┌─────────────────┐  ┌──────────────────┐  ┌──────────────────┐│
-│  │  Application    │  │  Management      │  │  Prometheus      ││
-│  │  Container      │  │  Agent Sidecar   │  │  Sidecar         ││
-│  │                 │  │                  │  │                  ││
-│  │  - App :80      │  │  - Downloads &   │  │  - Aggregates    ││
-│  │  - Metrics :9090│◄─┤    Installs      │◄─┤    metrics       ││
-│  │                 │  │  - Registers     │  │  - Scrapes :9090 ││
-│  │                 │  │    with OCI      │  │                  ││
-│  └────────┬────────┘  │  - Sends to OCI  │  └──────────────────┘│
-│           │           │    Monitoring    │                       │
-│           │           └──────────────────┘                       │
-│           │                                                      │
-│           │           ┌──────────────────┐                      │
-│           │           │  Log Forwarder   │                      │
-│           └──────────►│  Sidecar         │                      │
-│      Writes logs      │                  │                      │
-│      to /logs         │  - Monitors /logs│                      │
-│                       │  - Forwards to   │                      │
-│                       │    OCI Logging   │                      │
-│                       └──────────────────┘                      │
-│                                                                   │
-│  Shared Volumes:                                                 │
-│  • /metrics  - Shared between App & Prometheus                   │
-│  • /logs     - Shared between App & Log Forwarder               │
-└───────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│              OCI Container Instance - 7 Containers                       │
+│              Public IP: 130.61.110.78                                    │
+│                                                                          │
+│  ┌─────────────────┐  ┌──────────────────┐  ┌──────────────────┐      │
+│  │  Application    │  │  Official Oracle │  │  Prometheus      │      │
+│  │  Container      │  │  Mgmt Agent      │  │  Sidecar         │      │
+│  │  + cAdvisor     │  │  Sidecar v1.9.0  │  │                  │      │
+│  │  + Node Export. │  │                  │  │  - Aggregates    │      │
+│  │                 │  │  - Auto-registers│◄─┤    all metrics   │      │
+│  │  - App :80      │  │  - ConfigFile    │  │  - Scrapes :9090 │      │
+│  │  - Metrics :9090│◄─┤    with input.rsp│  │  - Prometheus DB │      │
+│  │  - cAdvisor:8080│  │  - Resource      │  └──────────────────┘      │
+│  │  - Node Exp:9100│  │    Principal     │                            │
+│  └────────┬────────┘  │  - Sends to OCI  │  ┌──────────────────┐      │
+│           │           │    Monitoring    │  │  Grafana         │      │
+│           │           └──────────────────┘  │  Sidecar         │      │
+│           │                                 │                  │      │
+│           │           ┌──────────────────┐  │  - Dashboards    │      │
+│           │           │  Log Forwarder   │  │  - Prometheus DS │      │
+│           └──────────►│  Sidecar         │  │  - Port :3000    │      │
+│      Writes logs      │                  │  │  - admin/admin   │      │
+│      to /logs         │  - Monitors /logs│◄─┼──Queries────────│      │
+│                       │  - Batch forward │  │    Prometheus    │      │
+│                       │  - OCI Logging   │  └──────────────────┘      │
+│                       └──────────────────┘                            │
+│                                                                          │
+│  Shared Volumes:                                                         │
+│  • /metrics  - Shared for metrics exchange                              │
+│  • /logs     - Shared for log collection                                │
+└──────────────────────────────────────────────────────────────────────────┘
                               ↓
                     ┌─────────┴─────────┐
                     │                   │
@@ -51,9 +54,9 @@ This demo provides comprehensive container monitoring using a modern sidecar arc
               │OCI          │    │OCI           │
               │Monitoring   │    │Logging       │
               │             │    │              │
-              │Namespace:   │    │Custom Logs   │
-              │container_   │    │              │
-              │monitoring   │    │              │
+              │Namespace:   │    │Log Group:    │
+              │container_   │    │container-    │
+              │monitoring   │    │instance-logs │
               └─────────────┘    └──────────────┘
 ```
 
@@ -78,10 +81,11 @@ This demo provides comprehensive container monitoring using a modern sidecar arc
 - ✅ **Least Privilege**: Only necessary ports exposed to your IP
 
 ### Container Images Built
-1. **Management Agent Sidecar** - Registers and reports metrics to OCI
+1. **Official Oracle Management Agent** - v1.9.0 from Oracle Container Registry
 2. **Prometheus Sidecar** - Aggregates metrics from local endpoints
-3. **Application with Metrics** - Sample app exposing Prometheus metrics
+3. **Application with Metrics** - Sample app exposing Prometheus metrics (includes cAdvisor + Node Exporter)
 4. **Log Forwarder Sidecar** - Monitors and forwards logs to OCI Logging
+5. **Grafana Sidecar** - Pre-configured dashboards with Prometheus datasource
 
 ## 📋 Prerequisites
 
@@ -255,13 +259,21 @@ oci container-instances container-instance get \
   --output json
 ```
 
-**Expected Output:**
+**Expected Output (7 Containers):**
 ```json
 {
   "State": "ACTIVE",
   "Containers": [
     {
       "Name": "monitoring-demo-app",
+      "State": "ACTIVE"
+    },
+    {
+      "Name": "monitoring-demo-cadvisor",
+      "State": "ACTIVE"
+    },
+    {
+      "Name": "monitoring-demo-node-exporter",
       "State": "ACTIVE"
     },
     {
@@ -275,9 +287,56 @@ oci container-instances container-instance get \
     {
       "Name": "monitoring-demo-log-forwarder-sidecar",
       "State": "ACTIVE"
+    },
+    {
+      "Name": "monitoring-demo-grafana-sidecar",
+      "State": "ACTIVE"
     }
   ]
 }
+```
+
+#### Access Grafana Dashboard
+
+Grafana is pre-configured with Prometheus datasource and comes with a Container Monitoring dashboard.
+
+**Access URL**: `http://130.61.110.78:3000`
+
+**Default Credentials**:
+- Username: `admin`
+- Password: `admin`
+
+**What to verify:**
+1. Login to Grafana
+2. Navigate to **Dashboards** → You should see "Container Instance Monitoring Dashboard"
+3. Check **Data Sources** → Prometheus should be pre-configured pointing to `http://localhost:9090`
+4. View metrics:
+   - Container CPU usage
+   - Container memory usage
+   - Network I/O
+   - Custom application metrics
+
+#### Access Prometheus Directly
+
+```bash
+# Prometheus web UI
+curl http://130.61.110.78:9090
+
+# Or open in browser
+open http://130.61.110.78:9090
+```
+
+#### Access Container Metrics Exporters
+
+```bash
+# cAdvisor - Container metrics
+curl http://130.61.110.78:8080/metrics
+
+# Node Exporter - Host metrics
+curl http://130.61.110.78:9100/metrics
+
+# Application metrics
+curl http://130.61.110.78/metrics
 ```
 
 ## 📊 Complete Workflow
@@ -432,6 +491,126 @@ oci-container-monitoring-demo/
 ├── scripts/
 │   └── deploy.sh                   # Deployment orchestration
 └── README.md                       # This file
+```
+
+## 📡 Management Agent Prometheus Data Source
+
+The Management Agent uses the Prometheus plugin to collect metrics and forward them to OCI Monitoring. This section explains how it's configured and how metrics flow from Prometheus to OCI.
+
+### How It Works
+
+```
+Application Metrics (:9090/metrics)
+    ↓
+Prometheus Sidecar (aggregates)
+    ↓
+Management Agent (scrapes Prometheus)
+    ↓
+OCI Monitoring (container_monitoring namespace)
+```
+
+### Configuration
+
+The Management Agent Prometheus plugin is automatically configured using the **ConfigFile** volume with `input.rsp`:
+
+```bash
+# Automatically created by Terraform in ConfigFile volume
+ManagementAgentInstallKey=${MGMT_AGENT_INSTALL_KEY}
+AgentDisplayName=${CONTAINER_INSTANCE_NAME}-mgmt-agent
+CredentialWalletPassword=${AUTO_GENERATED_PASSWORD}
+Service.plugin.prometheus.download=true  # Downloads Prometheus plugin
+```
+
+### Prometheus Plugin Configuration
+
+The plugin configuration is automatically created at agent startup:
+
+**Location**: `/opt/oracle/mgmt_agent/agent_inst/config/prometheus/prometheusPluginConfig.json`
+
+```json
+{
+  "entities": [
+    {
+      "namespace": "oci_prometheus_metrics",
+      "metricNamespace": "container_monitoring",
+      "resourceGroup": "monitoring-demo",
+      "prometheusConfig": {
+        "sourceUrl": "http://localhost:9090/metrics",
+        "scrapeInterval": "60s",
+        "scrapeTimeout": "10s"
+      }
+    }
+  ]
+}
+```
+
+### Viewing Metrics in OCI Console
+
+**Step 1**: Navigate to OCI Monitoring
+1. Go to **Observability & Management** → **Monitoring** → **Metrics Explorer**
+2. Select your compartment
+3. Choose namespace: **`container_monitoring`** (NOT `oci_prometheus_metrics`)
+
+**Step 2**: Query Metrics
+Available metric families:
+- `container_cpu_usage_seconds_total` - CPU usage per container
+- `container_memory_usage_bytes` - Memory usage per container
+- `container_network_receive_bytes_total` - Network ingress
+- `container_network_transmit_bytes_total` - Network egress
+- `node_cpu_seconds_total` - Host CPU metrics
+- `node_memory_MemAvailable_bytes` - Host memory metrics
+- Custom application metrics (if exposed)
+
+**Step 3**: Create Charts
+- Use PromQL-like queries in OCI Metrics Explorer
+- Set aggregation intervals (1m, 5m, 1h)
+- Create alarms based on thresholds
+
+### Verification
+
+**Check Management Agent Status**:
+```bash
+# List Management Agents
+oci management-agent agent list \
+  --compartment-id $OCI_COMPARTMENT_OCID \
+  --lifecycle-state ACTIVE \
+  --query 'data[*].{"Name":"display-name","State":"lifecycle-state"}' \
+  --output table
+```
+
+**Check Prometheus Plugin**:
+```bash
+# In Management Agent container logs, look for:
+✓ Prometheus plugin configured
+✓ Agent is now collecting and forwarding metrics to OCI Monitoring
+```
+
+**Verify Metrics Flow**:
+```bash
+# Test Prometheus endpoint
+curl http://130.61.110.78:9090/metrics
+
+# Check OCI Monitoring for recent data points
+oci monitoring metric list \
+  --compartment-id $OCI_COMPARTMENT_OCID \
+  --namespace container_monitoring
+```
+
+### Customizing Scrape Configuration
+
+To modify scrape intervals or add additional scrape targets, update `terraform.tfvars`:
+
+```hcl
+# Metrics Configuration
+prometheus_scrape_interval  = 60   # seconds
+prometheus_scrape_timeout   = 10   # seconds
+metrics_namespace          = "container_monitoring"
+```
+
+Then re-apply terraform:
+```bash
+cd terraform
+terraform apply -auto-approve
 ```
 
 ## 🔧 Configuration Reference
@@ -679,25 +858,36 @@ For issues and questions:
 
 ## 🎯 Roadmap
 
+Completed:
+- [x] **Grafana deployment** - Now included with pre-configured Prometheus datasource
+- [x] **Official Oracle Management Agent** - Using v1.9.0 from Oracle Container Registry
+- [x] **Automated registration** - ConfigFile volume with Resource Principal authentication
+
 Future enhancements planned:
-- [ ] Grafana deployment option
 - [ ] Multi-region deployment
 - [ ] Alert manager integration
-- [ ] Custom metric dashboards
+- [ ] Additional custom metric dashboards
 - [ ] Automated backup/restore
 - [ ] HA configuration examples
+- [ ] Log forwarder improvements (OCI Logging integration optimization)
 
 ## 🔖 Version History
 
-### v1.0.0 (Latest)
+### v2.0.0 (Current - October 2025)
+- ✅ **Official Oracle Management Agent v1.9.0** - No custom builds required
+- ✅ **Grafana Sidecar** - Pre-configured dashboards with Prometheus datasource
+- ✅ **7 Container Architecture** - App, cAdvisor, Node Exporter, Mgmt Agent, Prometheus, Log Forwarder, Grafana
+- ✅ **ConfigFile Volume** - Automatic agent registration with input.rsp
+- ✅ **Resource Principal Auth** - No hardcoded credentials
+- ✅ **Complete Observability Stack** - Metrics, logs, and visualization in one deployment
+- ✅ **Production-ready** - Currently deployed at 130.61.110.78
+
+### v1.0.0 (Previous)
 - ✅ Sidecar-based architecture for all components
-- ✅ Automatic Management Agent registration
+- ✅ Custom Management Agent builds (deprecated in v2.0.0)
 - ✅ Log forwarding with OCI Logging integration
 - ✅ NSG with automatic IP detection
-- ✅ Auto-updating build script for .env file
-- ✅ Four production-ready container images
 - ✅ Complete Terraform automation
-- ✅ Comprehensive documentation
 
 ---
 

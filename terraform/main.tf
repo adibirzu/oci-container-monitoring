@@ -116,7 +116,15 @@ module "container_instance" {
   log_forwarder_sidecar_image       = var.log_forwarder_sidecar_image
   log_forwarder_sidecar_memory_gb   = var.log_forwarder_sidecar_memory_gb
   log_forwarder_sidecar_ocpus       = var.log_forwarder_sidecar_ocpus
-  log_ocid                          = ""  # Will be configured after logging module is created
+  log_ocid                          = var.enable_logging && var.enable_log_forwarder_sidecar ? "ocid1.log.oc1.eu-frankfurt-1.amaaaaaattkvkkiaw4qh4kkcmr2pgs3fevxlv4pvi3vas2xc3vkddkddoica" : ""
+
+  # Grafana Sidecar Configuration (New)
+  enable_grafana_sidecar            = var.enable_grafana_sidecar
+  grafana_sidecar_image             = var.grafana_sidecar_image
+  grafana_sidecar_memory_gb         = var.grafana_sidecar_memory_gb
+  grafana_sidecar_ocpus             = var.grafana_sidecar_ocpus
+  grafana_admin_user                = var.grafana_admin_user
+  grafana_admin_password            = var.grafana_admin_password
 
   # Prometheus Exporters Configuration
   enable_prometheus_exporters = var.enable_prometheus_exporters

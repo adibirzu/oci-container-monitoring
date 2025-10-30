@@ -91,14 +91,15 @@ scrape_configs:
           exporter: 'blackbox'
           service: 'endpoint-probing'
 
-# Optional: Write metrics to shared volume for Management Agent
-remote_write:
-  - url: http://localhost:9091/api/v1/push  # If using push gateway
-    queue_config:
-      capacity: 10000
-      max_shards: 5
-      min_shards: 1
-      max_samples_per_send: 5000
-      batch_send_deadline: 5s
-      min_backoff: 30ms
-      max_backoff: 100ms
+# Remote write disabled - Management Agent will scrape from Prometheus /metrics endpoint
+# This avoids connection refused errors when Management Agent is not yet running
+# remote_write:
+#   - url: http://localhost:9091/api/v1/push  # If using push gateway
+#     queue_config:
+#       capacity: 10000
+#       max_shards: 5
+#       min_shards: 1
+#       max_samples_per_send: 5000
+#       batch_send_deadline: 5s
+#       min_backoff: 30ms
+#       max_backoff: 100ms

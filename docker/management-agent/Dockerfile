@@ -16,6 +16,7 @@ RUN yum update -y && \
     wget \
     curl \
     unzip \
+    cpio \
     procps-ng \
     net-tools \
     openssl \

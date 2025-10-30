@@ -57,6 +57,14 @@ locals {
       stateless   = false
     },
     {
+      description = "Grafana web interface from allowed IPs"
+      protocol    = "6" # TCP
+      source      = var.allowed_cidr
+      port_min    = 3000
+      port_max    = 3000
+      stateless   = false
+    },
+    {
       description = "Nginx Exporter metrics from allowed IPs"
       protocol    = "6" # TCP
       source      = var.allowed_cidr

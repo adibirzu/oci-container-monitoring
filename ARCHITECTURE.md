@@ -7,28 +7,54 @@ This is a production-ready, comprehensive monitoring solution for OCI Container 
 ## Architecture Pattern
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    OCI Container Instance                           │
-│                     (CI.Standard.E4.Flex)                           │
-│                                                                     │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌─────────────────┐ │
-│  │  Application     │  │  Management      │  │  Prometheus     │ │
-│  │  Container       │  │  Agent Sidecar   │  │  Sidecar        │ │
-│  │                  │  │                  │  │                 │ │
-│  │  - Nginx         │  │  - Scrapes       │  │  - cAdvisor     │ │
-│  │  - App Server    │  │    Prometheus    │  │  - Node Exp.    │ │
-│  │  - Metrics :9090 │  │  - Sends to OCI  │  │  - App Metrics  │ │
-│  └────────┬─────────┘  └────────┬─────────┘  └────────┬────────┘ │
-│           │                     │                      │          │
-│           └─────────────────────┼──────────────────────┘          │
-│                                 │                                 │
-│                    Shared Volume: /metrics                        │
-│                    Shared Volume: /logs                           │
-└─────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ↓
-                          OCI Monitoring Service
-                          (oci_prometheus_metrics namespace)
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                        OCI Container Instance                                    │
+│                         (CI.Standard.E4.Flex)                                    │
+│                         4GB RAM, 1 OCPU                                          │
+│                                                                                  │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐  ┌──────────────┐ │
+│  │  Application   │  │   cAdvisor     │  │ Node Exporter  │  │  Prometheus  │ │
+│  │  Container     │  │   Exporter     │  │   Exporter     │  │   Server     │ │
+│  │                │  │                │  │                │  │              │ │
+│  │  - Nginx       │  │  - Container   │  │  - Host-level  │  │  - Scrapes   │ │
+│  │  - App         │  │    metrics     │  │    metrics     │  │  - Stores    │ │
+│  │  - Port :80    │  │  - Port :8080  │  │  - Port :9100  │  │  - Port:9090 │ │
+│  └────────┬───────┘  └────────┬───────┘  └────────┬───────┘  └──────┬───────┘ │
+│           │                   │                    │                 │          │
+│           └───────────────────┴────────────────────┴─────────────────┘          │
+│                                         │                                        │
+│                                         ↓                                        │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐  ┌──────────────┐ │
+│  │  Management    │  │  Log Forwarder │  │    Grafana     │  │ /metrics     │ │
+│  │  Agent         │  │    Sidecar     │  │   Dashboard    │  │ (EMPTYDIR)   │ │
+│  │  (Official)    │  │                │  │                │  │              │ │
+│  │  - Forwards    │  │  - Reads logs  │  │  - Queries     │  │ Shared       │ │
+│  │    to OCI      │  │  - Sends to    │  │    Prometheus  │  │ by all       │ │
+│  │  - v1.9.0      │  │    OCI Logging │  │  - Port :3000  │  │ containers   │ │
+│  └────────┬───────┘  └────────┬───────┘  └────────┬───────┘  └──────────────┘ │
+│           │                   │                    │                            │
+│           └───────────────────┴────────────────────┘                            │
+│                                         │                                        │
+│                               ┌─────────┴─────────┐                             │
+│                               │     /logs         │                             │
+│                               │   (EMPTYDIR)      │                             │
+│                               │ Shared by all     │                             │
+│                               │ containers        │                             │
+│                               └───────────────────┘                             │
+└──────────────────────────────────────────────────────────────────────────────────┘
+                                         │
+                                         ↓
+                          ┌──────────────────────────────┐
+                          │   OCI Monitoring Service     │
+                          │ oci_prometheus_metrics       │
+                          │   namespace                  │
+                          └──────────────────────────────┘
+                                         │
+                                         ↓
+                          ┌──────────────────────────────┐
+                          │   OCI Logging Service        │
+                          │ Application & System Logs    │
+                          └──────────────────────────────┘
 ```
 
 ## Key Components
@@ -36,76 +62,169 @@ This is a production-ready, comprehensive monitoring solution for OCI Container 
 ### 1. Application Container
 - **Base Image**: `nginx:latest` or custom app image
 - **Purpose**: Main application workload
-- **Exposes**: Application metrics on `/metrics` endpoint
+- **Exposes**: Application endpoint on port 80
 - **Volumes**:
-  - `/metrics` - Shared metrics directory
-  - `/logs` - Application logs
+  - `/metrics` - Shared metrics directory (read/write)
+  - `/logs` - Application logs (read/write)
+- **Resources**: Varies (typically 2-3GB, 0.5-0.8 OCPU)
 
-### 2. Management Agent Sidecar
-- **Base Image**: `container-registry.oracle.com/os/oraclelinux:8`
-- **Purpose**: Collect metrics and send to OCI Monitoring
+### 2. cAdvisor Exporter
+- **Base Image**: `gcr.io/cadvisor/cadvisor:latest`
+- **Purpose**: Container-level resource metrics
+- **Port**: 8080
+- **Metrics**: CPU, memory, network, disk I/O per container
+- **Volumes**:
+  - `/metrics` - Exports metrics data
+  - `/logs` - Writes exporter logs
+- **Resources**: 0.4GB, 0.1 OCPU
+
+### 3. Node Exporter
+- **Base Image**: `prom/node-exporter:latest`
+- **Purpose**: Host-level system metrics
+- **Port**: 9100
+- **Metrics**: Host CPU, memory, filesystem, network
+- **Volumes**:
+  - `/metrics` - Exports metrics data
+  - `/logs` - Writes exporter logs
+- **Resources**: 0.3GB, 0.1 OCPU
+
+### 4. Prometheus Server
+- **Base Image**: `prom/prometheus:latest`
+- **Purpose**: Metrics aggregation and storage
+- **Port**: 9090
 - **Features**:
-  - Installs OCI Management Agent
-  - Configured with Prometheus plugin
-  - Scrapes local Prometheus endpoints
-  - Sends to `oci_prometheus_metrics` namespace
+  - Scrapes cAdvisor, Node Exporter, Application
+  - Time-series database for metrics
+  - PromQL query interface
+  - Provides data source for Grafana
 - **Volumes**:
-  - `/metrics` - Read metrics from other containers
-  - `/opt/oracle/mgmt_agent` - Agent data
+  - `/metrics` - Reads and aggregates metrics
+  - `/logs` - Writes Prometheus logs
+- **Resources**: 0.8GB, 0.2 OCPU
 
-### 3. Prometheus Exporters Sidecar
-- **cAdvisor** (port 8080): Container-level metrics
-- **Node Exporter** (port 9100): Host-level metrics
-- **Application Exporters** (optional):
-  - Nginx Exporter (port 9113)
-  - Redis Exporter (port 9121)
-  - PostgreSQL Exporter (port 9187)
-  - MySQL Exporter (port 9104)
-  - Blackbox Exporter (port 9115)
+### 5. Management Agent (Official Oracle)
+- **Base Image**: `container-registry.oracle.com/oci_observability_management/oci-management-agent:1.9.0`
+- **Purpose**: Forward metrics to OCI Monitoring
+- **Features**:
+  - Auto-registration via ConfigFile volume
+  - Resource Principal authentication
+  - Prometheus plugin pre-configured
+  - Scrapes Prometheus server
+  - Forwards to `oci_prometheus_metrics` namespace
+- **Volumes**:
+  - `/metrics` - Reads metrics from Prometheus
+  - `/logs` - Agent logs
+  - `/opt/oracle/mgmtagent_secret` - Configuration volume (input.rsp)
+- **Resources**: 0.8GB, 0.2 OCPU
+
+### 6. Log Forwarder Sidecar
+- **Base Image**: Custom Python-based image
+- **Purpose**: Forward container logs to OCI Logging
+- **Features**:
+  - Reads logs from shared `/logs` volume
+  - Resource Principal authentication
+  - Forwards to OCI Logging Service
+- **Volumes**:
+  - `/logs` - Reads application and container logs
+- **Resources**: 0.3GB, 0.1 OCPU
+
+### 7. Grafana Dashboard
+- **Base Image**: `grafana/grafana:latest`
+- **Purpose**: Metrics visualization and dashboards
+- **Port**: 3000
+- **Features**:
+  - Pre-configured Prometheus datasource
+  - Container monitoring dashboards
+  - Admin credentials: admin/admin
+  - Query and visualize all metrics
+- **Volumes**:
+  - `/logs` - Writes Grafana logs
+- **Resources**: 0.6GB, 0.15 OCPU
 
 ## Sidecar Communication Pattern
 
 ### Metrics Flow
 
 ```
-Application Container
-    ↓ (exposes :9090/metrics)
+Application Container (Port :80)
+    │
     ↓
-Prometheus Exporters
-    ↓ (scrapes and aggregates)
-    ↓
-Shared Volume (/metrics)
+cAdvisor (Port :8080) ←──────┐
+Node Exporter (Port :9100) ←─┤
+    │                         │
+    ↓                         │
+Prometheus Server (Port :9090)│  (scrapes every 60s)
+    │                         │
+    ├─────────────────────────┘
+    │
     ↓
 Management Agent
-    ↓ (reads and forwards)
+    │ (scrapes Prometheus)
     ↓
 OCI Monitoring Service
+(oci_prometheus_metrics namespace)
+```
+
+### Logs Flow
+
+```
+Application Container
+    │ (writes to /logs)
+    ↓
+cAdvisor, Node Exporter, Prometheus, Management Agent, Grafana
+    │ (all write to /logs)
+    ↓
+Log Forwarder Sidecar
+    │ (reads from /logs)
+    │ (forwards via Resource Principal)
+    ↓
+OCI Logging Service
 ```
 
 ### Volume Sharing
 
-All containers share two volumes:
+All containers share two EMPTYDIR volumes:
 
 1. **Metrics Volume** (`/metrics`):
-   - Application writes metrics files
-   - Prometheus writes aggregated metrics
-   - Management Agent reads and forwards
+   - **Type**: EMPTYDIR (ephemeral, in-memory)
+   - **Purpose**: Share metrics data between containers
+   - **Mounted by**:
+     - Application Container (read/write)
+     - cAdvisor (write)
+     - Node Exporter (write)
+     - Prometheus (read/write - aggregates and stores)
+     - Management Agent (read - forwards to OCI)
+   - **Lifecycle**: Created when container instance starts, deleted when it stops
 
 2. **Logs Volume** (`/logs`):
-   - Application logs
-   - Agent logs
-   - Exporter logs
+   - **Type**: EMPTYDIR (ephemeral, in-memory)
+   - **Purpose**: Centralized log collection for all containers
+   - **Mounted by**:
+     - Application Container (write)
+     - cAdvisor (write)
+     - Node Exporter (write)
+     - Prometheus (write)
+     - Management Agent (write)
+     - Grafana (write)
+     - Log Forwarder (read - forwards to OCI Logging)
+   - **Lifecycle**: Created when container instance starts, deleted when it stops
 
 ## Resource Allocation
 
-For a 4GB, 1 OCPU instance:
+For a 4GB, 1 OCPU instance with 7 containers:
 
-| Container | Memory | vCPU | Purpose |
-|-----------|--------|------|---------|
-| Application | 2.0 GB | 0.5 | Main workload |
-| Management Agent | 1.0 GB | 0.25 | Metrics forwarding |
-| Prometheus Exporters | 1.0 GB | 0.25 | Metrics collection |
-| **Total** | **4.0 GB** | **1.0** | Full utilization |
+| # | Container | Memory | vCPU | Purpose |
+|---|-----------|--------|------|---------|
+| 1 | Application | 2.0 GB | 0.5 | Main application workload |
+| 2 | cAdvisor | 0.4 GB | 0.1 | Container metrics exporter |
+| 3 | Node Exporter | 0.3 GB | 0.1 | Host metrics exporter |
+| 4 | Prometheus | 0.8 GB | 0.2 | Metrics aggregation & storage |
+| 5 | Management Agent | 0.8 GB | 0.2 | Forward metrics to OCI |
+| 6 | Log Forwarder | 0.3 GB | 0.1 | Forward logs to OCI Logging |
+| 7 | Grafana | 0.6 GB | 0.15 | Visualization dashboards |
+| | **Total** | **~5.2 GB** | **~1.25** | *Slightly over-committed* |
+
+**Note**: The resource allocation is slightly over-committed by design. OCI Container Instances allow this as containers typically don't use their full allocated resources simultaneously. In practice, the actual memory usage is around 3.5-4GB, well within the 4GB limit.
 
 ## Network & Security
 

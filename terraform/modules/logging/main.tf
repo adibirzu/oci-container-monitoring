@@ -27,7 +27,7 @@ resource "oci_logging_log" "container_application_log" {
   configuration {
     source {
       category    = "custom"
-      resource    = var.container_instance_id
+      resource    = var.compartment_ocid
       service     = "containerinstances"
       source_type = "OCISERVICE"
     }
@@ -56,7 +56,7 @@ resource "oci_logging_log" "container_system_log" {
   configuration {
     source {
       category    = "custom"
-      resource    = var.container_instance_id
+      resource    = var.compartment_ocid
       service     = "containerinstances"
       source_type = "OCISERVICE"
     }
@@ -115,7 +115,7 @@ resource "oci_logging_log" "prometheus_metrics_log" {
   configuration {
     source {
       category    = "custom"
-      resource    = var.container_instance_id
+      resource    = var.compartment_ocid
       service     = "containerinstances"
       source_type = "OCISERVICE"
     }

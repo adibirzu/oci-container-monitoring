@@ -9,8 +9,9 @@ variable "log_group_name" {
 }
 
 variable "container_instance_id" {
-  description = "Container Instance OCID"
+  description = "Container Instance OCID (optional, defaults to empty string)"
   type        = string
+  default     = ""
 }
 
 variable "enable_logging" {

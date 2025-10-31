@@ -165,7 +165,7 @@ node_time_seconds
    - job_name: 'cadvisor'
      scrape_interval: 15s
      static_configs:
-       - targets: ['10.0.0.46:8080', '10.0.0.47:8080', ...]
+       - targets: ['10.0.0.100:8080', '10.0.0.47:8080', ...]
    ```
 
 3. **node-exporter** - Host metrics from all container instances
@@ -173,7 +173,7 @@ node_time_seconds
    - job_name: 'node-exporter'
      scrape_interval: 15s
      static_configs:
-       - targets: ['10.0.0.46:9100', '10.0.0.47:9100', ...]
+       - targets: ['10.0.0.100:9100', '10.0.0.47:9100', ...]
    ```
 
 **Storage Location**: `/var/lib/prometheus`
@@ -296,9 +296,9 @@ cd /Users/abirzu/dev/oci-monitoring
 After deployment, you'll receive:
 
 ```
-Monitoring VM Public IP: 130.61.XX.XX
-Grafana URL: http://130.61.XX.XX:3000
-Prometheus URL: http://130.61.XX.XX:9090
+Monitoring VM Public IP: 203.0.113.10
+Grafana URL: http://203.0.113.10:3000
+Prometheus URL: http://203.0.113.10:9090
 
 Grafana Credentials:
   Username: admin

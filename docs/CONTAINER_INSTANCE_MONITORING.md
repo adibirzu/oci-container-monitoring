@@ -149,7 +149,7 @@ scrape_configs:
   - job_name: 'my-containers'
     static_configs:
       - targets:
-        - '10.0.0.46:9090'  # Container IP
+        - '10.0.0.100:9090'  # Container IP
         - '10.0.0.47:9090'
         - '10.0.0.48:9090'
 ```

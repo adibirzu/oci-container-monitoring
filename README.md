@@ -18,7 +18,7 @@ This demo provides comprehensive container monitoring using a modern sidecar arc
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │              OCI Container Instance - 7 Containers                       │
-│              Public IP: 130.61.110.78                                    │
+│              Public IP: 203.0.113.10                                    │
 │                                                                          │
 │  ┌─────────────────┐  ┌──────────────────┐  ┌──────────────────┐      │
 │  │  Application    │  │  Official Oracle │  │  Prometheus      │      │
@@ -79,6 +79,7 @@ This demo provides comprehensive container monitoring using a modern sidecar arc
 - ✅ **Automatic IP Detection**: NSG automatically configured with your public IP
 - ✅ **Port-Based Rules**: Secure access to all monitoring ports
 - ✅ **Least Privilege**: Only necessary ports exposed to your IP
+- 🔒 **Private Subnet Recommended**: For production deployments, use private subnets without public IP assignment. Public IPs shown in examples are for testing only.
 
 ### Container Images Built
 1. **Official Oracle Management Agent** - v1.9.0 from Oracle Container Registry
@@ -300,7 +301,7 @@ oci container-instances container-instance get \
 
 Grafana is pre-configured with Prometheus datasource and comes with a Container Monitoring dashboard.
 
-**Access URL**: `http://130.61.110.78:3000`
+**Access URL**: `http://203.0.113.10:3000`
 
 **Default Credentials**:
 - Username: `admin`
@@ -320,23 +321,23 @@ Grafana is pre-configured with Prometheus datasource and comes with a Container 
 
 ```bash
 # Prometheus web UI
-curl http://130.61.110.78:9090
+curl http://203.0.113.10:9090
 
 # Or open in browser
-open http://130.61.110.78:9090
+open http://203.0.113.10:9090
 ```
 
 #### Access Container Metrics Exporters
 
 ```bash
 # cAdvisor - Container metrics
-curl http://130.61.110.78:8080/metrics
+curl http://203.0.113.10:8080/metrics
 
 # Node Exporter - Host metrics
-curl http://130.61.110.78:9100/metrics
+curl http://203.0.113.10:9100/metrics
 
 # Application metrics
-curl http://130.61.110.78/metrics
+curl http://203.0.113.10/metrics
 ```
 
 ## 📊 Complete Workflow
@@ -588,7 +589,7 @@ oci management-agent agent list \
 **Verify Metrics Flow**:
 ```bash
 # Test Prometheus endpoint
-curl http://130.61.110.78:9090/metrics
+curl http://203.0.113.10:9090/metrics
 
 # Check OCI Monitoring for recent data points
 oci monitoring metric list \
@@ -880,7 +881,7 @@ Future enhancements planned:
 - ✅ **ConfigFile Volume** - Automatic agent registration with input.rsp
 - ✅ **Resource Principal Auth** - No hardcoded credentials
 - ✅ **Complete Observability Stack** - Metrics, logs, and visualization in one deployment
-- ✅ **Production-ready** - Currently deployed at 130.61.110.78
+- ✅ **Production-ready** - Currently deployed at 203.0.113.10
 
 ### v1.0.0 (Previous)
 - ✅ Sidecar-based architecture for all components

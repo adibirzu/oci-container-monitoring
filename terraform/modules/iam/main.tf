@@ -51,7 +51,7 @@ resource "oci_identity_policy" "container_logging_policy" {
   description    = "Policy to allow container instances to write logs"
 
   statements = [
-    "Allow dynamic-group ${var.create_dynamic_groups ? oci_identity_dynamic_group.container_instance_dg[0].name : var.existing_container_dg_name} to use log-content in compartment id ${var.compartment_ocid}",
+    "Allow dynamic-group ${var.create_dynamic_groups ? oci_identity_dynamic_group.container_instance_dg[0].name : var.existing_container_dg_name} to manage log-content in compartment id ${var.compartment_ocid}",
     "Allow dynamic-group ${var.create_dynamic_groups ? oci_identity_dynamic_group.container_instance_dg[0].name : var.existing_container_dg_name} to use log-groups in compartment id ${var.compartment_ocid}",
   ]
 

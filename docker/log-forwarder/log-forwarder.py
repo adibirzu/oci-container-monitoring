@@ -29,14 +29,27 @@ class LogForwarder:
 
     def __init__(self):
         self.log_mount_path = os.getenv('LOG_MOUNT_PATH', '/logs')
-        self.log_file = os.getenv('LOG_FILE', 'application.log')
+        # Support both single file (backward compatibility) and multiple files
+        single_log_file = os.getenv('LOG_FILE', '')
+        if single_log_file:
+            self.log_files = [single_log_file]
+        else:
+            # Monitor all container log files
+            self.log_files = [
+                'application.log',
+                'cadvisor.log',
+                'node-exporter.log',
+                'mgmt-agent.log',
+                'prometheus.log'
+            ]
+
         self.log_ocid = os.getenv('LOG_OCID', '')
         self.log_header = os.getenv('LOG_HEADER', 'container-logs')
         self.batch_size = int(os.getenv('BATCH_SIZE', '100'))
         self.flush_interval = int(os.getenv('FLUSH_INTERVAL', '5'))
 
-        self.log_path = os.path.join(self.log_mount_path, self.log_file)
-        self.position = 0
+        # Track position for each log file separately
+        self.log_positions = {log_file: 0 for log_file in self.log_files}
         self.buffer = []
         self.last_flush = time.time()
 
@@ -51,25 +64,43 @@ class LogForwarder:
             self.logging_client = None
 
         logger.info(f"Log Forwarder Configuration:")
-        logger.info(f"  Log Path: {self.log_path}")
+        logger.info(f"  Log Directory: {self.log_mount_path}")
+        logger.info(f"  Monitoring {len(self.log_files)} log file(s):")
+        for log_file in self.log_files:
+            logger.info(f"    - {log_file}")
         logger.info(f"  Log OCID: {self.log_ocid[:50]}..." if self.log_ocid else "  Log OCID: Not configured")
         logger.info(f"  Batch Size: {self.batch_size}")
         logger.info(f"  Flush Interval: {self.flush_interval}s")
 
     def read_new_logs(self):
-        """Read new log entries from the log file"""
-        try:
-            if not os.path.exists(self.log_path):
-                return []
+        """Read new log entries from all monitored log files"""
+        all_logs = []
 
-            with open(self.log_path, 'r') as f:
-                f.seek(self.position)
-                lines = f.readlines()
-                self.position = f.tell()
-                return [line.strip() for line in lines if line.strip()]
-        except Exception as e:
-            logger.error(f"Error reading log file: {e}")
-            return []
+        for log_file in self.log_files:
+            log_path = os.path.join(self.log_mount_path, log_file)
+
+            try:
+                if not os.path.exists(log_path):
+                    continue
+
+                with open(log_path, 'r') as f:
+                    f.seek(self.log_positions[log_file])
+                    lines = f.readlines()
+                    self.log_positions[log_file] = f.tell()
+
+                    # Tag each log entry with its source container
+                    container_name = log_file.replace('.log', '')
+                    tagged_logs = [
+                        f"[{container_name}] {line.strip()}"
+                        for line in lines if line.strip()
+                    ]
+                    all_logs.extend(tagged_logs)
+
+            except Exception as e:
+                logger.error(f"Error reading {log_file}: {e}")
+                continue
+
+        return all_logs
 
     def create_log_entry(self, message):
         """Create an OCI LogEntry object"""
@@ -135,7 +166,7 @@ class LogForwarder:
         logger.info("=" * 60)
         logger.info("OCI Log Forwarder Started")
         logger.info("=" * 60)
-        logger.info(f"Monitoring: {self.log_path}")
+        logger.info(f"Monitoring {len(self.log_files)} log file(s) in {self.log_mount_path}")
         logger.info(f"Press Ctrl+C to stop")
         logger.info("=" * 60)
 
@@ -159,9 +190,14 @@ class LogFileHandler(FileSystemEventHandler):
 
     def __init__(self, forwarder):
         self.forwarder = forwarder
+        # Build set of monitored log paths for quick lookup
+        self.monitored_paths = {
+            os.path.join(forwarder.log_mount_path, log_file)
+            for log_file in forwarder.log_files
+        }
 
     def on_modified(self, event):
-        if not event.is_directory and event.src_path == self.forwarder.log_path:
+        if not event.is_directory and event.src_path in self.monitored_paths:
             self.forwarder.process_logs()
 
 def main():

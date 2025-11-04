@@ -20,15 +20,17 @@ locals {
   # Detected public IP for NSG rules
   my_ip_cidr = "${chomp(data.http.my_ip.response_body)}/32"
 
-  # Common tags
+  # Common tags (CreatedDate removed to prevent constant updates)
   common_tags = merge(
     var.freeform_tags,
     {
-      Project     = "OCI-Container-Monitoring"
-      Terraform   = "true"
-      CreatedDate = formatdate("YYYY-MM-DD", timestamp())
+      Project   = "OCI-Container-Monitoring"
+      Terraform = "true"
     }
   )
+
+  # Use module output directly - circular dependency is broken by removing from depends_on
+  application_log_ocid = var.enable_logging && var.enable_log_forwarder_sidecar ? module.logging[0].application_log_id : ""
 }
 
 #######################################
@@ -116,7 +118,8 @@ module "container_instance" {
   log_forwarder_sidecar_image       = var.log_forwarder_sidecar_image
   log_forwarder_sidecar_memory_gb   = var.log_forwarder_sidecar_memory_gb
   log_forwarder_sidecar_ocpus       = var.log_forwarder_sidecar_ocpus
-  log_ocid                          = var.enable_logging && var.enable_log_forwarder_sidecar ? "ocid1.log.oc1.eu-frankfurt-1.amaaaaaattkvkkiaw7bhvdxvtgxy7hoju6vdmodykcfzhoqv3zu7n63oiqya" : ""
+  # Use local variable to avoid circular dependency
+  log_ocid                          = local.application_log_ocid
 
   # Grafana Sidecar Configuration (New)
   enable_grafana_sidecar            = var.enable_grafana_sidecar
@@ -137,6 +140,7 @@ module "container_instance" {
   freeform_tags = local.common_tags
   defined_tags  = var.defined_tags
 
+  # Note: logging dependency removed to avoid circular dependency during destroy
   depends_on = [module.iam, module.nsg, module.management_agent]
 }
 

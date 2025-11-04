@@ -125,6 +125,13 @@ if [ ! -d "/opt/oracle/mgmt_agent/agent_inst" ]; then
         rm -rf /opt/oracle/mgmt_agent/zip  # Clean up ZIP directory after successful verification
         echo "✓ Management Agent extracted successfully"
         ls -la /opt/oracle/mgmt_agent/230821.1905/bin/ | head -20
+
+        # Create agent_inst symlink to version directory if it doesn't exist
+        if [ ! -L "/opt/oracle/mgmt_agent/agent_inst" ] && [ ! -d "/opt/oracle/mgmt_agent/agent_inst" ]; then
+            echo "Creating agent_inst symlink to version directory..."
+            ln -s /opt/oracle/mgmt_agent/230821.1905 /opt/oracle/mgmt_agent/agent_inst
+            echo "✓ Symlink created: agent_inst -> 230821.1905"
+        fi
     else
         echo "ERROR: setup.sh binary not found after extraction"
         echo "Directory contents:"
@@ -170,7 +177,7 @@ if [ ! -f "/opt/oracle/mgmt_agent/agent_inst/config/mgmt_agent.properties" ]; th
     echo "Install Key: ${MGMT_AGENT_INSTALL_KEY:0:20}...${MGMT_AGENT_INSTALL_KEY: -10}"
     echo "Agent Name: $(hostname)-mgmt-agent"
 
-    /opt/oracle/mgmt_agent/230821.1905/bin/setup.sh opts=/tmp/mgmt_agent_input.rsp 2>&1 | tee /tmp/setup.log
+    /opt/oracle/mgmt_agent/agent_inst/bin/setup.sh opts=/tmp/mgmt_agent_input.rsp 2>&1 | tee /tmp/setup.log
     SETUP_STATUS=$?
 
     if [ $SETUP_STATUS -ne 0 ]; then

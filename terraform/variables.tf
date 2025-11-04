@@ -245,6 +245,12 @@ variable "prometheus_sidecar_ocpus" {
   default     = 0.25
 }
 
+variable "application_log_ocid" {
+  description = "Application Log OCID for log forwarder sidecar (optional, will be auto-populated from Terraform state)"
+  type        = string
+  default     = ""
+}
+
 variable "enable_log_forwarder_sidecar" {
   description = "Enable Log Forwarder as sidecar container for forwarding logs to OCI Logging"
   type        = bool

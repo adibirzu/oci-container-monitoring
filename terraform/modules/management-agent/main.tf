@@ -17,6 +17,10 @@ resource "oci_management_agent_management_agent_install_key" "main" {
   # Allowed key attributes
   allowed_key_install_count = var.allowed_install_count
   is_unlimited              = var.is_unlimited_install
+
+  lifecycle {
+    ignore_changes = [time_expires]
+  }
 }
 
 #######################################

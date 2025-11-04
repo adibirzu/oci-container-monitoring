@@ -115,6 +115,24 @@ resource "oci_container_instances_container_instance" "main" {
     display_name = "${var.container_instance_name}-app"
     image_url    = var.container_image
 
+    # Command to redirect stdout/stderr to log file for log forwarder
+    # Starts the default application and redirects all output to log file using tee
+    # This preserves both stdout (for container logs) and writes to shared volume
+    command = var.enable_log_forwarder_sidecar && var.enable_shared_volumes ? [
+      "/bin/sh",
+      "-c",
+      <<-EOT
+        # Create log file if it doesn't exist
+        touch /logs/application.log
+        # Find python executable (python3 or python)
+        PYTHON_CMD=$(which python3 2>/dev/null || which python 2>/dev/null || echo "python3")
+        # Redirect stderr to stdout and pipe through tee to log file
+        exec 2>&1
+        # Run the default application command and tee output
+        $PYTHON_CMD /app/app.py 2>&1 | tee -a /logs/application.log
+      EOT
+    ] : null
+
     # Environment variables (as map)
     environment_variables = var.container_env_vars
 
@@ -174,8 +192,22 @@ resource "oci_container_instances_container_instance" "main" {
       display_name = "${var.container_instance_name}-cadvisor"
       image_url    = "gcr.io/cadvisor/cadvisor:latest"
 
-      # cAdvisor command arguments
-      arguments = [
+      # Command to redirect stdout/stderr to log file for log forwarder
+      command = var.enable_log_forwarder_sidecar && var.enable_shared_volumes ? [
+        "/bin/sh",
+        "-c",
+        <<-EOT
+          # Create log file if it doesn't exist
+          touch /logs/cadvisor.log
+          # Redirect stderr to stdout and pipe through tee to log file
+          exec 2>&1
+          # Run cadvisor with arguments and tee output to log file
+          /usr/bin/cadvisor --port=8080 --housekeeping_interval=10s --docker_only=true --store_container_labels=false 2>&1 | tee -a /logs/cadvisor.log
+        EOT
+      ] : null
+
+      # cAdvisor command arguments (used when log redirection is disabled)
+      arguments = var.enable_log_forwarder_sidecar && var.enable_shared_volumes ? [] : [
         "--port=8080",
         "--housekeeping_interval=10s",
         "--docker_only=true",
@@ -197,6 +229,16 @@ resource "oci_container_instances_container_instance" "main" {
         timeout_in_seconds  = 10
         failure_threshold   = 3
       }
+
+      # Shared volume mount for log forwarding
+      dynamic "volume_mounts" {
+        for_each = var.enable_shared_volumes && var.enable_log_forwarder_sidecar ? [1] : []
+        content {
+          mount_path  = "/logs"
+          volume_name = "logs-volume"
+          is_read_only = false
+        }
+      }
     }
   }
 
@@ -208,8 +250,22 @@ resource "oci_container_instances_container_instance" "main" {
       display_name = "${var.container_instance_name}-node-exporter"
       image_url    = "prom/node-exporter:latest"
 
-      # Node exporter arguments
-      arguments = [
+      # Command to redirect stdout/stderr to log file for log forwarder
+      command = var.enable_log_forwarder_sidecar && var.enable_shared_volumes ? [
+        "/bin/sh",
+        "-c",
+        <<-EOT
+          # Create log file if it doesn't exist
+          touch /logs/node-exporter.log
+          # Redirect stderr to stdout and pipe through tee to log file
+          exec 2>&1
+          # Run node_exporter with arguments and tee output to log file
+          /bin/node_exporter --path.rootfs=/host --path.procfs=/host/proc --path.sysfs=/host/sys --collector.filesystem.mount-points-exclude='^/(sys|proc|dev|host|etc)($$|/)' 2>&1 | tee -a /logs/node-exporter.log
+        EOT
+      ] : null
+
+      # Node exporter arguments (used when log redirection is disabled)
+      arguments = var.enable_log_forwarder_sidecar && var.enable_shared_volumes ? [] : [
         "--path.rootfs=/host",
         "--path.procfs=/host/proc",
         "--path.sysfs=/host/sys",
@@ -230,6 +286,16 @@ resource "oci_container_instances_container_instance" "main" {
         interval_in_seconds = 30
         timeout_in_seconds  = 10
         failure_threshold   = 3
+      }
+
+      # Shared volume mount for log forwarding
+      dynamic "volume_mounts" {
+        for_each = var.enable_shared_volumes && var.enable_log_forwarder_sidecar ? [1] : []
+        content {
+          mount_path  = "/logs"
+          volume_name = "logs-volume"
+          is_read_only = false
+        }
       }
     }
   }
@@ -407,11 +473,28 @@ resource "oci_container_instances_container_instance" "main" {
       display_name = "${var.container_instance_name}-mgmt-agent-sidecar"
       image_url    = var.mgmt_agent_sidecar_image
 
+      # Command to redirect stdout/stderr to log file for log forwarder
+      # The entrypoint script already handles log management, so we wrap it to redirect all output
+      command = var.enable_log_forwarder_sidecar && var.enable_shared_volumes ? [
+        "/bin/bash",
+        "-c",
+        <<-EOT
+          # Create log file if it doesn't exist
+          touch /logs/mgmt-agent.log
+          # Run the default entrypoint and redirect all output to log file
+          # This captures the entire setup, registration, and monitoring lifecycle
+          exec /entrypoint.sh 2>&1 | tee -a /logs/mgmt-agent.log
+        EOT
+      ] : null
+
       # Environment variables for Management Agent configuration
       environment_variables = {
-        # Oracle official image uses input.rsp file instead of environment variables
-        # OCI_REGION is still used for Resource Principal authentication
-        OCI_REGION = var.region
+        # Required environment variables for the custom entrypoint script
+        MGMT_AGENT_INSTALL_KEY      = var.mgmt_agent_install_key
+        OCI_REGION                  = var.region
+        METRICS_NAMESPACE           = var.metrics_namespace
+        PROMETHEUS_SCRAPE_INTERVAL  = tostring(var.prometheus_scrape_interval)
+        PROMETHEUS_SCRAPE_TIMEOUT   = tostring(var.prometheus_scrape_timeout)
       }
 
       # Mount input.rsp configuration directory
@@ -462,6 +545,20 @@ resource "oci_container_instances_container_instance" "main" {
       display_name = "${var.container_instance_name}-prometheus-sidecar"
       image_url    = var.prometheus_sidecar_image
 
+      # Command to redirect stdout/stderr to log file for log forwarder
+      command = var.enable_log_forwarder_sidecar && var.enable_shared_volumes ? [
+        "/bin/sh",
+        "-c",
+        <<-EOT
+          # Create log file if it doesn't exist
+          touch /logs/prometheus.log
+          # Redirect stderr to stdout and pipe through tee to log file
+          exec 2>&1
+          # Run prometheus with default config and tee output to log file
+          /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus 2>&1 | tee -a /logs/prometheus.log
+        EOT
+      ] : null
+
       # Volume mounts for shared data
       dynamic "volume_mounts" {
         for_each = var.enable_shared_volumes ? [1] : []
@@ -511,7 +608,7 @@ resource "oci_container_instances_container_instance" "main" {
       # Environment variables for log forwarder configuration
       environment_variables = {
         LOG_MOUNT_PATH = "/logs"
-        LOG_FILE       = "application.log"
+        # LOG_FILE is no longer needed - forwarder auto-detects all log files
         LOG_OCID       = var.log_ocid != "" ? var.log_ocid : ""
         LOG_HEADER     = "container-logs"
         BATCH_SIZE     = "100"

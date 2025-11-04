@@ -1,11 +1,11 @@
 output "log_group_id" {
   description = "OCID of the log group"
-  value       = oci_logging_log_group.container_log_group.id
+  value       = local.log_group_id
 }
 
 output "log_group_name" {
   description = "Name of the log group"
-  value       = oci_logging_log_group.container_log_group.display_name
+  value       = var.log_group_name
 }
 
 output "application_log_id" {

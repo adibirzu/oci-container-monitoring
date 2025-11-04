@@ -42,7 +42,15 @@ echo ""
 # Function to display logs
 view_logs() {
     local log_type=$1
-    local time_start=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S.000Z)
+
+    # Platform-independent date calculation
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS (BSD date)
+        local time_start=$(date -u -v-1H +%Y-%m-%dT%H:%M:%S.000Z)
+    else
+        # Linux (GNU date)
+        local time_start=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S.000Z)
+    fi
     local time_end=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
 
     echo -e "${GREEN}Fetching ${log_type} logs from last hour...${NC}"

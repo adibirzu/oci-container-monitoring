@@ -124,12 +124,10 @@ resource "oci_container_instances_container_instance" "main" {
       <<-EOT
         # Create log file if it doesn't exist
         touch /logs/application.log
-        # Find python executable (python3 or python)
-        PYTHON_CMD=$(which python3 2>/dev/null || which python 2>/dev/null || echo "python3")
-        # Redirect stderr to stdout and pipe through tee to log file
-        exec 2>&1
-        # Run the default application command and tee output
-        $PYTHON_CMD /app/app.py 2>&1 | tee -a /logs/application.log
+        # Start metrics generator in background
+        /usr/local/bin/generate-metrics.sh 2>&1 | tee -a /logs/application.log &
+        # Start nginx and redirect logs to file
+        exec nginx -g 'daemon off;' 2>&1 | tee -a /logs/application.log
       EOT
     ] : null
 
@@ -259,8 +257,9 @@ resource "oci_container_instances_container_instance" "main" {
           touch /logs/node-exporter.log
           # Redirect stderr to stdout and pipe through tee to log file
           exec 2>&1
-          # Run node_exporter with arguments and tee output to log file
-          /bin/node_exporter --path.rootfs=/host --path.procfs=/host/proc --path.sysfs=/host/sys --collector.filesystem.mount-points-exclude='^/(sys|proc|dev|host|etc)($$|/)' 2>&1 | tee -a /logs/node-exporter.log
+          # Run node_exporter WITHOUT host paths (not available in OCI Container Instances)
+          # This will collect container-level metrics only
+          /bin/node_exporter 2>&1 | tee -a /logs/node-exporter.log
         EOT
       ] : null
 
@@ -552,10 +551,13 @@ resource "oci_container_instances_container_instance" "main" {
         <<-EOT
           # Create log file if it doesn't exist
           touch /logs/prometheus.log
-          # Redirect stderr to stdout and pipe through tee to log file
-          exec 2>&1
-          # Run prometheus with default config and tee output to log file
-          /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus 2>&1 | tee -a /logs/prometheus.log
+          # Run prometheus with proper configuration and tee output to log file
+          exec /bin/prometheus \
+            --config.file=/etc/prometheus/prometheus.yml \
+            --storage.tsdb.path=/prometheus \
+            --web.console.libraries=/usr/share/prometheus/console_libraries \
+            --web.console.templates=/usr/share/prometheus/consoles \
+            --web.enable-lifecycle 2>&1 | tee -a /logs/prometheus.log
         EOT
       ] : null
 

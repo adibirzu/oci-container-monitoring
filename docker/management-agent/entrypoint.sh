@@ -60,8 +60,17 @@ if [ ! -f "/tmp/oracle.mgmt_agent.rpm" ]; then
     echo "✓ Management Agent downloaded successfully (${FILE_SIZE} bytes)"
 fi
 
+# Create agent_inst symlink if it doesn't exist (do this BEFORE extraction check)
+if [ ! -L "/opt/oracle/mgmt_agent/agent_inst" ] && [ ! -d "/opt/oracle/mgmt_agent/agent_inst" ]; then
+    if [ -d "/opt/oracle/mgmt_agent/230821.1905" ]; then
+        echo "Creating agent_inst symlink to existing version directory..."
+        ln -s /opt/oracle/mgmt_agent/230821.1905 /opt/oracle/mgmt_agent/agent_inst
+        echo "✓ Symlink created: agent_inst -> 230821.1905"
+    fi
+fi
+
 # Extract Management Agent RPM contents (bypassing systemd check)
-if [ ! -d "/opt/oracle/mgmt_agent/agent_inst" ]; then
+if [ ! -d "/opt/oracle/mgmt_agent/230821.1905" ]; then
     echo "Extracting Management Agent from RPM (bypassing systemd requirement)..."
 
     # Install rpm2cpio if not available
@@ -111,6 +120,26 @@ if [ ! -d "/opt/oracle/mgmt_agent/agent_inst" ]; then
         fi
 
         echo "✓ ZIP file extracted successfully using Oracle extractor"
+
+        # The Java extractor creates files in zip/unpack/ directory
+        # Move the extracted agent_inst directory to the root
+        if [ -d "/opt/oracle/mgmt_agent/zip/unpack/agent_inst" ]; then
+            echo "Moving extracted agent files from zip/unpack/ to root..."
+            cp -r /opt/oracle/mgmt_agent/zip/unpack/agent_inst /opt/oracle/mgmt_agent/
+            echo "✓ Agent files moved successfully"
+        fi
+
+        # The extracted files might have a version directory structure
+        # Check for version directory and move if needed
+        VERSION_DIR=$(find /opt/oracle/mgmt_agent -maxdepth 3 -type d -name "230*" | head -1)
+        if [ -n "$VERSION_DIR" ] && [ "$VERSION_DIR" != "/opt/oracle/mgmt_agent/230821.1905" ]; then
+            echo "Found version directory at: $VERSION_DIR"
+            if [ ! -d "/opt/oracle/mgmt_agent/230821.1905" ]; then
+                mv "$VERSION_DIR" /opt/oracle/mgmt_agent/230821.1905
+                echo "✓ Version directory moved to /opt/oracle/mgmt_agent/230821.1905"
+            fi
+        fi
+
         echo "Checking extraction results..."
         echo "Contents of /opt/oracle/mgmt_agent:"
         ls -la /opt/oracle/mgmt_agent/ 2>&1 || true
@@ -120,7 +149,7 @@ if [ ! -d "/opt/oracle/mgmt_agent/agent_inst" ]; then
         find /opt/oracle/mgmt_agent -maxdepth 2 -type d -name "agent*" -ls 2>&1 || true
     fi
 
-    # Verify extraction - check for setup.sh in version directory
+    # Verify extraction - check for setup.sh in version directory or agent_inst
     if [ -f "/opt/oracle/mgmt_agent/230821.1905/bin/setup.sh" ]; then
         rm -rf /opt/oracle/mgmt_agent/zip  # Clean up ZIP directory after successful verification
         echo "✓ Management Agent extracted successfully"
@@ -132,6 +161,11 @@ if [ ! -d "/opt/oracle/mgmt_agent/agent_inst" ]; then
             ln -s /opt/oracle/mgmt_agent/230821.1905 /opt/oracle/mgmt_agent/agent_inst
             echo "✓ Symlink created: agent_inst -> 230821.1905"
         fi
+    elif [ -f "/opt/oracle/mgmt_agent/agent_inst/bin/setup.sh" ]; then
+        # Agent extracted directly to agent_inst directory
+        rm -rf /opt/oracle/mgmt_agent/zip  # Clean up ZIP directory after successful verification
+        echo "✓ Management Agent extracted successfully (found in agent_inst)"
+        ls -la /opt/oracle/mgmt_agent/agent_inst/bin/ | head -20
     else
         echo "ERROR: setup.sh binary not found after extraction"
         echo "Directory contents:"
@@ -140,7 +174,24 @@ if [ ! -d "/opt/oracle/mgmt_agent/agent_inst" ]; then
         find /opt/oracle/mgmt_agent -name "setup.sh" -ls
         echo "Looking for bin directories:"
         find /opt/oracle/mgmt_agent -name "bin" -type d -ls
-        exit 1
+        echo "Trying alternative extraction method..."
+
+        # Try to find and move any agent files
+        SETUP_FILE=$(find /opt/oracle/mgmt_agent -name "setup.sh" -type f | head -1)
+        if [ -n "$SETUP_FILE" ]; then
+            SETUP_DIR=$(dirname "$SETUP_FILE")
+            AGENT_ROOT=$(dirname "$SETUP_DIR")
+            echo "Found setup.sh at: $SETUP_FILE"
+            echo "Agent root appears to be: $AGENT_ROOT"
+
+            if [ "$AGENT_ROOT" != "/opt/oracle/mgmt_agent/agent_inst" ]; then
+                echo "Moving agent files to standard location..."
+                cp -r "$AGENT_ROOT" /opt/oracle/mgmt_agent/agent_inst
+                echo "✓ Agent files moved to agent_inst"
+            fi
+        else
+            exit 1
+        fi
     fi
 
     # Set proper permissions on version bin directory

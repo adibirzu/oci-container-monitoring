@@ -338,7 +338,7 @@ variable "log_forwarder_sidecar_ocpus" {
 }
 
 variable "log_ocid" {
-  description = "OCI Logging Log OCID for log forwarder to send logs to"
+  description = "OCI Logging Log OCID for log forwarder to send logs to. Required when enable_log_forwarder_sidecar is true, otherwise logs will be collected but silently discarded."
   type        = string
   default     = ""
 }

@@ -18,7 +18,7 @@ This demo provides comprehensive container monitoring using a modern sidecar arc
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │              OCI Container Instance - 7 Containers                       │
-│              Public IP: 203.0.113.10                                    │
+│              Public IP: YOURIP                                           │
 │                                                                          │
 │  ┌─────────────────┐  ┌──────────────────┐  ┌──────────────────┐      │
 │  │  Application    │  │  Official Oracle │  │  Prometheus      │      │
@@ -60,6 +60,165 @@ This demo provides comprehensive container monitoring using a modern sidecar arc
               └─────────────┘    └──────────────┘
 ```
 
+## 📸 Screenshots & Component Integration
+
+This section demonstrates the complete monitoring stack in action, showing how all 7 containers work together to provide comprehensive observability.
+
+> **Note:** Screenshot image files should be placed in the `/screenshots/` directory. See `/screenshots/README.md` for required files and naming conventions.
+
+> **Important:** Throughout this documentation, `YOURIP` is used as a placeholder for your Container Instance's public IP address. Replace it with your actual deployment IP when accessing the services.
+
+### 1. Grafana Metrics Explorer
+
+Grafana provides a powerful visualization interface for all collected metrics. The screenshot below shows the Metrics Explorer with container-level metrics:
+
+![Grafana Metrics Explorer](screenshots/grafana-metrics-explorer.png)
+
+**What you see:**
+- Real-time container CPU and memory usage
+- Network I/O metrics for all containers
+- Custom application metrics from the application container
+- Historical data visualizations with configurable time ranges
+- Prometheus datasource pre-configured and connected
+
+**Access:** `http://YOURIP:3000` (Username: `admin`, Password: `admin`)
+
+### 2. Application Monitoring Stack Overview
+
+The main application webpage provides a comprehensive overview of the monitoring architecture:
+
+![Application Webpage](screenshots/application-webpage.png)
+
+**What you see:**
+- Visual representation of the 7-container sidecar architecture
+- Component health status indicators
+- Links to access each monitoring component directly
+- System information and deployment details
+- Real-time health check status
+
+**Access:** `http://YOURIP/`
+
+### 3. Prometheus Target Health
+
+Prometheus continuously scrapes metrics from all configured exporters. This view shows the health status of all scrape targets:
+
+![Prometheus Targets](screenshots/prometheus-targets.png)
+
+**What you see:**
+- **cAdvisor** (localhost:8080) - Container metrics - Status: UP
+- **Node Exporter** (localhost:9100) - Host system metrics - Status: UP
+- **Application Metrics** (localhost:9090) - Custom app metrics - Status: UP
+- Last scrape time and duration for each target
+- Error indicators if any target is down
+
+**Access:** `http://YOURIP:9090/targets`
+
+### 4. cAdvisor Detailed Metrics
+
+cAdvisor provides detailed container-level metrics in Prometheus format. This shows the raw metrics output:
+
+![cAdvisor Metrics](screenshots/cadvisor-metrics.png)
+
+**What you see:**
+- `container_cpu_usage_seconds_total` - CPU usage per container
+- `container_memory_usage_bytes` - Current memory usage
+- `container_network_receive_bytes_total` - Network ingress
+- `container_network_transmit_bytes_total` - Network egress
+- `container_fs_reads_bytes_total` - Filesystem read operations
+- Labels for container identification (name, id, image)
+
+**Access:** `http://YOURIP:8080/metrics`
+
+### Component Integration Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Complete Metrics & Logs Flow                     │
+└─────────────────────────────────────────────────────────────────────┘
+
+1. APPLICATION CONTAINER
+   ├─ Generates custom application metrics
+   ├─ Writes logs to /logs/application.log
+   └─ Exposes health check endpoint
+
+2. cAdVISOR (Port 8080)
+   ├─ Monitors all 7 containers in the instance
+   ├─ Collects CPU, memory, network, filesystem metrics
+   └─ Exposes metrics at :8080/metrics
+
+3. NODE EXPORTER (Port 9100)
+   ├─ Monitors host system (container instance)
+   ├─ Collects CPU, memory, disk, network interface stats
+   └─ Exposes metrics at :9100/metrics
+
+4. PROMETHEUS (Port 9090)
+   ├─ Scrapes cAdvisor every 60s
+   ├─ Scrapes Node Exporter every 60s
+   ├─ Scrapes Application metrics every 60s
+   ├─ Stores time-series data locally
+   ├─ Provides query interface (PromQL)
+   └─ Exposes aggregated metrics at :9090/metrics
+
+5. GRAFANA (Port 3000)
+   ├─ Connects to Prometheus as datasource
+   ├─ Queries metrics using PromQL
+   ├─ Visualizes data in pre-configured dashboards
+   └─ Provides alerting capabilities
+
+6. MANAGEMENT AGENT (Background)
+   ├─ Scrapes Prometheus endpoint (:9090/metrics)
+   ├─ Forwards metrics to OCI Monitoring service
+   ├─ Sends to namespace: container_monitoring
+   └─ Enables viewing metrics in OCI Console
+
+7. LOG FORWARDER (Background)
+   ├─ Monitors /logs directory for new log entries
+   ├─ Reads: application.log, prometheus.log, cadvisor.log
+   ├─ Batches log entries (100 per batch)
+   └─ Forwards to OCI Logging using Resource Principal
+```
+
+### Verification Steps
+
+After deployment, verify the integration:
+
+```bash
+# 1. Check all containers are ACTIVE
+oci container-instances container list \
+  --container-instance-id <instance-id> \
+  --query 'data[*].{Name:"display-name",State:"lifecycle-state"}' \
+  --output table
+
+# 2. Test Application
+curl http://YOURIP/
+curl http://YOURIP/health
+
+# 3. Test Prometheus
+curl http://YOURIP:9090/-/healthy
+curl http://YOURIP:9090/api/v1/targets
+
+# 4. Test cAdvisor
+curl http://YOURIP:8080/metrics | grep container_cpu
+
+# 5. Test Node Exporter
+curl http://YOURIP:9100/metrics | grep node_cpu
+
+# 6. Access Grafana
+open http://YOURIP:3000
+# Login: admin/admin
+
+# 7. Verify OCI Monitoring (metrics should appear within 2-3 minutes)
+oci monitoring metric list \
+  --compartment-id $COMPARTMENT_OCID \
+  --namespace container_monitoring
+
+# 8. Verify OCI Logging
+oci logging-search search-logs \
+  --search-query "search \"<log-group-ocid>\" | sort by datetime desc" \
+  --time-start "2025-01-01T00:00:00.000Z" \
+  --time-end "2025-12-31T23:59:59.999Z"
+```
+
 ## ✨ Key Features
 
 ### Automated Monitoring
@@ -81,12 +240,14 @@ This demo provides comprehensive container monitoring using a modern sidecar arc
 - ✅ **Least Privilege**: Only necessary ports exposed to your IP
 - 🔒 **Private Subnet Recommended**: For production deployments, use private subnets without public IP assignment. Public IPs shown in examples are for testing only.
 
-### Container Images Built
-1. **Official Oracle Management Agent** - v1.9.0 from Oracle Container Registry
-2. **Prometheus Sidecar** - Aggregates metrics from local endpoints
-3. **Application with Metrics** - Sample app exposing Prometheus metrics (includes cAdvisor + Node Exporter)
-4. **Log Forwarder Sidecar** - Monitors and forwards logs to OCI Logging
-5. **Grafana Sidecar** - Pre-configured dashboards with Prometheus datasource
+### Container Images in Deployment
+1. **Official Oracle Management Agent** - v1.9.0 from Oracle Container Registry (no custom build needed)
+2. **Prometheus Sidecar** - Custom image: Aggregates metrics from all local exporters
+3. **Application Container** - Custom image: Sample nginx app with health endpoints
+4. **Log Forwarder Sidecar** - Custom image: Monitors /logs and forwards to OCI Logging
+5. **Grafana** - Official grafana/grafana:latest with auto-configured Prometheus datasource
+6. **cAdvisor** - Official google/cadvisor:latest for container metrics
+7. **Node Exporter** - Official prom/node-exporter:latest for host metrics
 
 ## 📋 Prerequisites
 
@@ -299,45 +460,49 @@ oci container-instances container-instance get \
 
 #### Access Grafana Dashboard
 
-Grafana is pre-configured with Prometheus datasource and comes with a Container Monitoring dashboard.
+Grafana is pre-configured with Prometheus datasource and provides powerful visualization capabilities.
 
-**Access URL**: `http://203.0.113.10:3000`
+**Access URL**: `http://YOURIP:3000`
 
 **Default Credentials**:
 - Username: `admin`
 - Password: `admin`
 
 **What to verify:**
-1. Login to Grafana
-2. Navigate to **Dashboards** → You should see "Container Instance Monitoring Dashboard"
+1. Login to Grafana at `http://YOURIP:3000`
+2. Navigate to **Explore** → Metrics Explorer for ad-hoc queries
 3. Check **Data Sources** → Prometheus should be pre-configured pointing to `http://localhost:9090`
-4. View metrics:
-   - Container CPU usage
-   - Container memory usage
-   - Network I/O
-   - Custom application metrics
+4. Query metrics using PromQL:
+   - `container_cpu_usage_seconds_total` - Container CPU usage
+   - `container_memory_usage_bytes` - Container memory usage
+   - `rate(container_network_receive_bytes_total[5m])` - Network ingress rate
+   - Custom application metrics from your application container
+5. Create custom dashboards by importing or building from scratch
 
 #### Access Prometheus Directly
 
 ```bash
 # Prometheus web UI
-curl http://203.0.113.10:9090
+curl http://YOURIP:9090
 
 # Or open in browser
-open http://203.0.113.10:9090
+open http://YOURIP:9090
+
+# Query API example
+curl 'http://YOURIP:9090/api/v1/query?query=up'
 ```
 
 #### Access Container Metrics Exporters
 
 ```bash
-# cAdvisor - Container metrics
-curl http://203.0.113.10:8080/metrics
+# cAdvisor - Container metrics (detailed container statistics)
+curl http://YOURIP:8080/metrics
 
-# Node Exporter - Host metrics
-curl http://203.0.113.10:9100/metrics
+# Node Exporter - Host metrics (system-level stats)
+curl http://YOURIP:9100/metrics
 
-# Application metrics
-curl http://203.0.113.10/metrics
+# Application metrics (custom metrics from your app)
+curl http://YOURIP/metrics
 ```
 
 ## 📊 Complete Workflow
@@ -347,17 +512,22 @@ curl http://203.0.113.10/metrics
 ```
 1. Login to OCIR
 2. Build Management Agent Sidecar
-   └─ Install Management Agent RPM
-   └─ Configure registration script
+   └─ Oracle Management Agent v1.9.0
+   └─ Configure auto-registration with Resource Principal
 3. Build Prometheus Sidecar
-   └─ Configure scrape targets
-4. Build Application with Metrics
-   └─ Sample app with /metrics endpoint
+   └─ Prometheus server with scrape configuration
+   └─ Targets: cAdvisor, Node Exporter, Application
+4. Build Application Container
+   └─ Nginx with health check endpoints
+   └─ Generates metrics for demonstration
 5. Build Log Forwarder Sidecar
-   └─ OCI SDK + watchdog library
-6. Push all images to OCIR
+   └─ Python app with OCI SDK
+   └─ Watches /logs directory and forwards to OCI Logging
+6. Push all 4 custom images to OCIR
 7. AUTO-UPDATE config/oci-monitoring.env
    └─ Updates all image URLs automatically!
+
+Note: Grafana, cAdvisor, and Node Exporter use official public images
 ```
 
 ### Phase 2: Terraform Infrastructure (./scripts/deploy.sh deploy)
@@ -382,56 +552,101 @@ curl http://203.0.113.10/metrics
    ├─ Log Group
    ├─ Application Log
    └─ System Log
-7. Deploy Container Instance
-   ├─ Application Container
-   ├─ Management Agent Sidecar
-   ├─ Prometheus Sidecar
-   └─ Log Forwarder Sidecar
+7. Deploy Container Instance with 7 Containers
+   ├─ Application Container (nginx)
+   ├─ cAdvisor (container metrics)
+   ├─ Node Exporter (host metrics)
+   ├─ Management Agent Sidecar (forwards to OCI)
+   ├─ Prometheus Sidecar (aggregates metrics)
+   ├─ Log Forwarder Sidecar (forwards logs)
+   └─ Grafana (visualization)
 8. Attach NSG to Container Instance
 9. Configure Shared Volumes
-   ├─ /metrics (App ↔ Prometheus)
-   └─ /logs (App ↔ Log Forwarder)
+   ├─ /metrics (Prometheus access)
+   └─ /logs (Log Forwarder access)
 ```
 
 ### Phase 3: Container Startup & Registration
 
 ```
 Application Container:
-1. Starts application on port 80
-2. Exposes Prometheus metrics on :9090/metrics
-3. Writes logs to /logs/application.log
+1. Starts nginx web server on port 80
+2. Serves health check endpoint at /health
+3. Generates sample metrics
+4. Writes logs to /logs/application.log
+
+cAdvisor Container:
+1. Starts cAdvisor on port 8080
+2. Monitors all 7 containers in the instance
+3. Collects CPU, memory, network, filesystem metrics
+4. Exposes metrics at :8080/metrics
+
+Node Exporter Container:
+1. Starts Node Exporter on port 9100
+2. Monitors host system resources
+3. Collects CPU, memory, disk, network interface stats
+4. Exposes metrics at :9100/metrics
+
+Prometheus Sidecar:
+1. Loads prometheus.yml configuration
+2. Scrapes cAdvisor (:8080/metrics) every 60s
+3. Scrapes Node Exporter (:9100/metrics) every 60s
+4. Scrapes Application metrics every 60s
+5. Stores time-series data in local database
+6. Provides query interface at :9090
+7. Exposes aggregated metrics at :9090/metrics
+
+Grafana Sidecar:
+1. Starts Grafana on port 3000
+2. Auto-configures Prometheus datasource (localhost:9090)
+3. Installs default plugins
+4. Ready for dashboard creation and metric visualization
+5. Login: admin/admin
 
 Management Agent Sidecar:
-1. Downloads Management Agent RPM
-2. Installs agent
-3. Creates response file with install key
+1. Downloads Management Agent RPM from OCI Object Storage
+2. Extracts and installs agent using rpm2cpio
+3. Creates response file with install key from environment
 4. Runs setup.sh → REGISTERS WITH OCI
-   ├─ Validates install key
+   ├─ Validates install key with OCI service
    ├─ Generates communication wallet
    ├─ Generates security artifacts
    └─ Registers with Management Agent service
-5. Configures Prometheus plugin
+5. Configures Prometheus plugin (prometheusPluginConfig.json)
 6. Starts agent (agentcore start)
-7. Begins scraping localhost:9090/metrics
-8. Forwards metrics to OCI Monitoring
-
-Prometheus Sidecar:
-1. Loads configuration
-2. Scrapes localhost:9090/metrics every 60s
-3. Aggregates metrics
-4. Provides aggregated metrics to Management Agent
+7. Begins scraping Prometheus endpoint (:9090/metrics) every 60s
+8. Forwards metrics to OCI Monitoring namespace: container_monitoring
 
 Log Forwarder Sidecar:
-1. Monitors /logs directory using watchdog
-2. Detects new log entries
-3. Batches logs (configurable batch size)
-4. Forwards to OCI Logging using Resource Principal
-5. Continues monitoring for new logs
+1. Initializes OCI Logging client with Resource Principal
+2. Monitors /logs directory using file watchers
+3. Watches multiple log files: application.log, prometheus.log, etc.
+4. Detects new log entries in real-time
+5. Batches logs (100 entries per batch)
+6. Forwards batches to OCI Logging using Resource Principal
+7. Continues monitoring for new logs (no polling, event-driven)
 ```
 
 ### Phase 4: Monitoring & Verification
 
 ```
+Local Access (via Public IP: YOURIP):
+1. Grafana Dashboard: http://YOURIP:3000
+   ├─ Login: admin/admin
+   ├─ Explore metrics using Metrics Explorer
+   ├─ Create custom dashboards
+   └─ Query Prometheus datasource with PromQL
+2. Prometheus UI: http://YOURIP:9090
+   ├─ View targets health status
+   ├─ Execute PromQL queries
+   └─ Graph metrics
+3. cAdvisor: http://YOURIP:8080
+   └─ View detailed container metrics
+4. Node Exporter: http://YOURIP:9100/metrics
+   └─ View host system metrics
+5. Application: http://YOURIP/
+   └─ Health check: http://YOURIP/health
+
 OCI Management Agent Console:
 1. Navigate to: Observability & Management → Management Agents
 2. Find agent: <hostname>-mgmt-agent
@@ -441,21 +656,21 @@ OCI Management Agent Console:
 OCI Monitoring Console:
 1. Navigate to: Observability & Management → Monitoring → Metrics Explorer
 2. Namespace: container_monitoring
-3. View metrics:
+3. View metrics (appear within 2-3 minutes after deployment):
    ├─ container_cpu_usage_seconds_total
    ├─ container_memory_usage_bytes
    ├─ container_network_receive_bytes_total
    ├─ container_network_transmit_bytes_total
    ├─ node_cpu_seconds_total
    ├─ node_memory_MemAvailable_bytes
-   └─ app_requests_total (custom)
+   └─ Custom application metrics (if configured)
 
 OCI Logging Console:
 1. Navigate to: Observability & Management → Logging → Logs
 2. Log Group: container-instance-logs
 3. Logs:
    ├─ Application Log (from /logs/application.log)
-   └─ System Log (container system events)
+   └─ Additional logs (prometheus, cadvisor, etc. if configured)
 ```
 
 ## 🗂️ Project Structure
@@ -589,9 +804,12 @@ oci management-agent agent list \
 **Verify Metrics Flow**:
 ```bash
 # Test Prometheus endpoint
-curl http://203.0.113.10:9090/metrics
+curl http://YOURIP:9090/metrics
 
-# Check OCI Monitoring for recent data points
+# Test specific metric query
+curl 'http://YOURIP:9090/api/v1/query?query=container_memory_usage_bytes'
+
+# Check OCI Monitoring for recent data points (metrics appear within 2-3 minutes)
 oci monitoring metric list \
   --compartment-id $OCI_COMPARTMENT_OCID \
   --namespace container_monitoring
@@ -874,14 +1092,23 @@ Future enhancements planned:
 
 ## 🔖 Version History
 
-### v2.0.0 (Current - October 2025)
+### v2.0.0 (Current - November 2025)
 - ✅ **Official Oracle Management Agent v1.9.0** - No custom builds required
-- ✅ **Grafana Sidecar** - Pre-configured dashboards with Prometheus datasource
+- ✅ **Grafana Sidecar** - Pre-configured with Prometheus datasource for powerful visualization
 - ✅ **7 Container Architecture** - App, cAdvisor, Node Exporter, Mgmt Agent, Prometheus, Log Forwarder, Grafana
 - ✅ **ConfigFile Volume** - Automatic agent registration with input.rsp
-- ✅ **Resource Principal Auth** - No hardcoded credentials
+- ✅ **Resource Principal Auth** - No hardcoded credentials for secure authentication
 - ✅ **Complete Observability Stack** - Metrics, logs, and visualization in one deployment
-- ✅ **Production-ready** - Currently deployed at 203.0.113.10
+- ✅ **Production Deployment** - Currently running at YOURIP with all 7 containers ACTIVE
+- ✅ **Enhanced Documentation** - Screenshots and detailed component integration documentation
+
+**Current Deployment Status:**
+- Public IP: YOURIP
+- All 7 containers: ACTIVE and healthy
+- Grafana: Accessible at :3000 (admin/admin)
+- Prometheus: Collecting metrics from all exporters
+- Log Forwarder: Successfully forwarding to OCI Logging
+- Management Agent: Registered and sending metrics to OCI Monitoring
 
 ### v1.0.0 (Previous)
 - ✅ Sidecar-based architecture for all components
